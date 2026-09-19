@@ -1,0 +1,112 @@
+{
+  "family": "friyo-api",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "512",
+  "memory": "1024",
+  "executionRoleArn": "arn:aws:iam::ACCOUNT_ID:role/friyo-ecs-execution-role",
+  "taskRoleArn":      "arn:aws:iam::ACCOUNT_ID:role/friyo-ecs-task-role",
+
+  "containerDefinitions": [
+    {
+      "name": "friyo-api",
+      "image": "ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/friyo-backend:latest",
+      "essential": true,
+
+      "portMappings": [
+        {
+          "containerPort": 3000,
+          "protocol": "tcp"
+        }
+      ],
+
+      "environment": [
+        { "name": "NODE_ENV",      "value": "production" },
+        { "name": "PORT",          "value": "3000" },
+        { "name": "APP_URL",       "value": "https://api.friyo.app" },
+        { "name": "FRONTEND_URL",  "value": "https://friyo.app" },
+        { "name": "ADMIN_URL",     "value": "https://admin.friyo.app" },
+        { "name": "AWS_REGION",    "value": "us-east-1" },
+        { "name": "AWS_S3_BUCKET", "value": "friyo-media" }
+      ],
+
+      "secrets": [
+        {
+          "name": "DATABASE_URL",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:friyo/production/DATABASE_URL"
+        },
+        {
+          "name": "REDIS_URL",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:friyo/production/REDIS_URL"
+        },
+        {
+          "name": "JWT_SECRET",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:friyo/production/JWT_SECRET"
+        },
+        {
+          "name": "JWT_REFRESH_SECRET",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:friyo/production/JWT_REFRESH_SECRET"
+        },
+        {
+          "name": "ADMIN_JWT_SECRET",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:friyo/production/ADMIN_JWT_SECRET"
+        },
+        {
+          "name": "OPENAI_API_KEY",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:friyo/production/OPENAI_API_KEY"
+        },
+        {
+          "name": "AWS_ACCESS_KEY_ID",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:friyo/production/AWS_ACCESS_KEY_ID"
+        },
+        {
+          "name": "AWS_SECRET_ACCESS_KEY",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:friyo/production/AWS_SECRET_ACCESS_KEY"
+        },
+        {
+          "name": "FIREBASE_PROJECT_ID",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:friyo/production/FIREBASE_PROJECT_ID"
+        },
+        {
+          "name": "FIREBASE_PRIVATE_KEY",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:friyo/production/FIREBASE_PRIVATE_KEY"
+        },
+        {
+          "name": "FIREBASE_CLIENT_EMAIL",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:friyo/production/FIREBASE_CLIENT_EMAIL"
+        }
+      ],
+
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group":         "/friyo/api/production",
+          "awslogs-region":        "us-east-1",
+          "awslogs-stream-prefix": "api",
+          "awslogs-create-group":  "true"
+        }
+      },
+
+      "healthCheck": {
+        "command": [
+          "CMD-SHELL",
+          "wget -qO- http://localhost:3000/api/v1/health || exit 1"
+        ],
+        "interval":    30,
+        "timeout":     10,
+        "retries":     3,
+        "startPeriod": 60
+      },
+
+      "ulimits": [
+        {
+          "name": "nofile",
+          "softLimit": 65536,
+          "hardLimit": 65536
+        }
+      ],
+
+      "stopTimeout": 30
+    }
+  ]
+}

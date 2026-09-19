@@ -1,0 +1,10 @@
+node_modules/
+.expo/
+dist/
+.env
+.env.*
+!.env.example
+.DS_Store
+# Generate native projects from config plugins for every EAS build.
+ios/
+android/

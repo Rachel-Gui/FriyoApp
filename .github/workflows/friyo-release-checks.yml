@@ -1,0 +1,99 @@
+name: Friyo release checks
+on:
+  pull_request:
+    paths: ['FriyoAPP/**', 'friyo-backend/**', 'friyo-admin/**', 'scripts/**', '.github/workflows/friyo-release-checks.yml']
+  push:
+    branches: [main]
+    paths: ['FriyoAPP/**', 'friyo-backend/**', 'friyo-admin/**', 'scripts/**', '.github/workflows/friyo-release-checks.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  mobile:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: FriyoAPP
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: FriyoAPP/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm audit --omit=dev --audit-level=high
+      - run: npm test
+      - run: npx expo export --platform ios --output-dir /tmp/friyo-export
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: friyo
+          POSTGRES_PASSWORD: local-ci-only
+          POSTGRES_DB: friyo_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U friyo -d friyo_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://friyo:local-ci-only@localhost:5432/friyo_test
+      REDIS_URL: redis://localhost:6379
+      JWT_SECRET: ci-access-secret-only-not-production
+      JWT_REFRESH_SECRET: ci-refresh-secret-only-not-production
+      ADMIN_JWT_SECRET: ci-admin-secret-only-not-production
+    defaults:
+      run:
+        working-directory: friyo-backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: friyo-backend/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - run: npm test -- --runInBand
+      - run: npm audit --omit=dev --audit-level=high
+      - run: npm run migration:run:prod
+      - name: API smoke test against disposable database
+        run: |
+          node dist/main.js > /tmp/friyo-api.log 2>&1 &
+          api_pid=$!
+          trap 'kill "$api_pid" || true' EXIT
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://localhost:3000/api/v1/health > /dev/null; then break; fi
+            sleep 2
+          done
+          FRIYO_API_URL=http://localhost:3000/api/v1 FRIYO_SMOKE_STAGING=true node ../scripts/smoke-api.mjs
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: api-startup-log
+          path: /tmp/friyo-api.log
+  admin:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: friyo-admin
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: friyo-admin/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - run: npm audit --omit=dev --audit-level=high

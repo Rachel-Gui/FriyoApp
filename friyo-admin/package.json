@@ -1,0 +1,37 @@
+{
+  "name": "friyo-admin",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@ant-design/icons": "^5.4.0",
+    "@ant-design/nextjs-registry": "^1.0.1",
+    "@tanstack/react-query": "^5.56.2",
+    "@tanstack/react-query-devtools": "^5.56.2",
+    "@uiw/react-md-editor": "^4.0.4",
+    "antd": "^5.20.3",
+    "axios": "^1.7.7",
+    "dayjs": "^1.11.13",
+    "next": "^15.5.25",
+    "next-auth": "^4.24.8",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "recharts": "^2.12.7"
+  },
+  "devDependencies": {
+    "@types/node": "^20.16.5",
+    "@types/react": "^18.3.5",
+    "@types/react-dom": "^18.3.0",
+    "eslint": "^8.57.0",
+    "eslint-config-next": "^15.5.25",
+    "typescript": "^5.6.2"
+  },
+  "overrides": {
+    "postcss": "^8.5.28"
+  }
+}

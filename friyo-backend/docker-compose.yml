@@ -1,0 +1,129 @@
+version: '3.9'
+
+# ── Networks ──────────────────────────────────────────────────────────────────
+networks:
+  friyo-net:
+    driver: bridge
+
+# ── Volumes ───────────────────────────────────────────────────────────────────
+volumes:
+  postgres_data:
+  redis_data:
+  elasticsearch_data:
+
+# ── Services ──────────────────────────────────────────────────────────────────
+services:
+
+  # ── NestJS API ───────────────────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: builder          # Use builder stage for hot-reload in dev
+    container_name: friyo-api
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV:    development
+      PORT:        3000
+      DB_HOST:     postgres
+      DB_PORT:     5432
+      REDIS_HOST:  redis
+      REDIS_PORT:  6379
+      ELASTICSEARCH_URL: http://elasticsearch:9200
+    ports:
+      - '3000:3000'
+    volumes:
+      - ./src:/app/src          # Live source reload
+      - ./tsconfig.json:/app/tsconfig.json
+    command: npm run start:dev
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - friyo-net
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://localhost:3000/api/v1/health']
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # ── PostgreSQL 15 ─────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:15-alpine
+    container_name: friyo-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       friyo
+      POSTGRES_USER:     postgres
+      POSTGRES_PASSWORD: password
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - friyo-net
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d friyo']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Redis 7 ───────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: friyo-redis
+    restart: unless-stopped
+    command: redis-server --save 60 1 --loglevel warning
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+    networks:
+      - friyo-net
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Elasticsearch 8 ───────────────────────────────────────────────────────────
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.13.0
+    container_name: friyo-elasticsearch
+    restart: unless-stopped
+    environment:
+      discovery.type:          single-node
+      xpack.security.enabled:  'false'   # Disabled for local dev
+      ES_JAVA_OPTS:            '-Xms512m -Xmx512m'
+      ELASTIC_PASSWORD:        ''
+    ports:
+      - '9200:9200'
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    networks:
+      - friyo-net
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -s http://localhost:9200/_cluster/health | grep -qE "green|yellow"']
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # ── Adminer — database GUI ────────────────────────────────────────────────────
+  adminer:
+    image: adminer:latest
+    container_name: friyo-adminer
+    restart: unless-stopped
+    ports:
+      - '8080:8080'
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+      ADMINER_DESIGN: pepa-linha
+    depends_on:
+      - postgres
+    networks:
+      - friyo-net

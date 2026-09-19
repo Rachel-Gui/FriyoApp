@@ -1,0 +1,66 @@
+{
+  "expo": {
+    "name": "Friyo",
+    "slug": "new-expo-name",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/app-icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/images/mascot.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#F5F0E8"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.friyo.app",
+      "buildNumber": "15",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSCameraUsageDescription": "Friyo uses the camera to scan your fridge and identify ingredients automatically.",
+        "NSPhotoLibraryUsageDescription": "Friyo reads your photo library so you can import fridge images.",
+        "NSUserActivityTypes": [
+          "$(PRODUCT_BUNDLE_IDENTIFIER).expo.index_route"
+        ]
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/mascot.png",
+        "backgroundColor": "#F5F0E8"
+      },
+      "package": "com.friyo.app",
+      "permissions": [
+        "android.permission.CAMERA"
+      ],
+      "blockedPermissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/mascot.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#F5F0E8"
+        }
+      ]
+    ],
+    "scheme": "friyo",
+    "experiments": {
+      "typedRoutes": true
+    },
+    "owner": "rachel_gui",
+    "extra": {
+      "router": {
+        "origin": false
+      },
+      "eas": {
+        "projectId": "f5524a97-9a93-4d9a-ad85-4c3fc59e8659"
+      }
+    }
+  }
+}
