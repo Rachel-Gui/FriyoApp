@@ -1,7 +1,5 @@
-import {
-  View, Text, TouchableOpacity, StyleSheet,
-  Dimensions, Image, Animated, Alert, ActivityIndicator,
-} from 'react-native';
+import { LocalizedText as Text, LocalizedTouchableOpacity as TouchableOpacity, LocalizedAlert as Alert } from '@/components/ui/LocalizedNative';
+import { View, StyleSheet, Dimensions, Image, Animated, ActivityIndicator } from 'react-native';
 import { useState, useRef, useCallback } from 'react';
 import { useRouter } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
@@ -41,6 +39,8 @@ export default function FridgeScanner() {
   const [errorMsg,       setErrorMsg]       = useState('');
   const [cameraFacing,   setCameraFacing]   = useState<'back' | 'front'>('back');
 
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
   const cameraRef = useRef<CameraView>(null);
 
   // Shutter animation
@@ -122,7 +122,8 @@ export default function FridgeScanner() {
         attempts++;
       }
 
-      if (result.status === 'failed' || attempts >= 20) {
+      if (result.status !== 'completed') {
+        setErrorMsg(result.status === 'failed' ? 'The scan failed. Please try again.' : 'The scan is taking longer than expected. Please try again.');
         setDetectedItems([]);
         setScannedItems([]);
         setStage('done');
@@ -157,12 +158,19 @@ export default function FridgeScanner() {
       router.back();
       return;
     }
+    if (savingRef.current) return;
+    savingRef.current = true;
+    setSaving(true);
     try {
       await fridgeService.confirmScan(sessionId, scannedItems);
       qc.invalidateQueries({ queryKey: ['fridge'] });
+      qc.invalidateQueries({ queryKey: ['recipes'] });
     } catch (err: any) {
       Alert.alert('Error', err?.message ?? 'Could not save items. Please try again.');
       return;
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
     }
     router.back();
   }, [detectedItems, scannedItems, sessionId]);
@@ -292,17 +300,17 @@ export default function FridgeScanner() {
 
         {/* Confirm banner (done state) */}
         {stage === 'done' && detectedItems.length > 0 && (
-          <TouchableOpacity style={s.addStorageBtn} onPress={confirmItems}>
+          <TouchableOpacity style={s.addStorageBtn} onPress={confirmItems} disabled={saving}>
             <SFIcon name="checkmark" size={16} color={Colors.black} weight="fill" />
             <Text style={s.addStorageBtnText}>
-              {`Add ${detectedItems.length} Items to Fridge →`}
+              {saving ? 'Saving…' : `Add ${detectedItems.length} Items to Fridge →`}
             </Text>
           </TouchableOpacity>
         )}
 
         {stage === 'done' && detectedItems.length === 0 && (
           <View style={s.emptyResultCard}>
-            <Text style={s.emptyResultTitle}>No items found</Text>
+            <Text style={s.emptyResultTitle}>{errorMsg ? 'Scan unavailable' : 'No items found'}</Text>
             <Text style={s.emptyResultText}>
               {errorMsg || 'Try another angle, better light, or import a clearer photo.'}
             </Text>

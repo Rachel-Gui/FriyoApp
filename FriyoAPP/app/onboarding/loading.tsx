@@ -1,6 +1,7 @@
-import { View, Text, Image, StyleSheet, ActivityIndicator, TouchableOpacity } from 'react-native';
+import { LocalizedText as Text, LocalizedTouchableOpacity as TouchableOpacity } from '@/components/ui/LocalizedNative';
+import { View, Image, StyleSheet, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 import { Colors }             from '@/constants/Colors';
 import { useAuthStore }       from '@/store/authStore';
 import { useOnboardingStore } from '@/store/onboardingStore';
@@ -15,15 +16,30 @@ export default function OnboardingLoading() {
   const cookingTools          = useOnboardingStore(s => s.cookingTools);
   const healthGoals           = useOnboardingStore(s => s.healthGoals);
   const preferredCuisines     = useOnboardingStore(s => s.preferredCuisines);
+  const mealFormats = useOnboardingStore(s => s.mealFormats);
+  const flavorPreferences = useOnboardingStore(s => s.flavorPreferences);
+  const timePreference = useOnboardingStore(s => s.timePreference);
+  const groceryFrequency = useOnboardingStore(s => s.groceryFrequency);
+  const dietaryRestrictions = useOnboardingStore(s => s.dietaryRestrictions);
+  const initialCraving = useOnboardingStore(s => s.initialCraving);
+  const householdSize = useOnboardingStore(s => s.householdSize);
   const resetOnboarding       = useOnboardingStore(s => s.reset);
   const [saving, setSaving]   = useState(true);
   const [error, setError]     = useState<string | null>(null);
 
+  const started = useRef(false);
   const finish = useCallback(async () => {
     setSaving(true);
     setError(null);
     try {
       await userService.updateProfile({
+        meal_formats: mealFormats,
+        flavor_preferences: flavorPreferences,
+        time_preference: timePreference,
+        grocery_frequency: groceryFrequency,
+        dietary_restrictions: dietaryRestrictions,
+        initial_craving: initialCraving.trim(),
+        household_size: householdSize,
         diet_type:            dietType as any,
         allergies,
         cooking_skill:        cookingSkill as any,
@@ -43,6 +59,7 @@ export default function OnboardingLoading() {
       setSaving(false);
     }
   }, [
+    mealFormats, flavorPreferences, timePreference, groceryFrequency, dietaryRestrictions, initialCraving, householdSize,
     allergies,
     cookingSkill,
     cookingTools,
@@ -55,7 +72,7 @@ export default function OnboardingLoading() {
   ]);
 
   useEffect(() => {
-    finish();
+    if (!started.current) { started.current = true; void finish(); }
   }, [finish]);
 
   return (

@@ -1,5 +1,6 @@
+import { LocalizedText as Text } from '@/components/ui/LocalizedNative';
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { Colors } from '@/constants/Colors';
 import { SFIcon } from '@/components/ui/SFIcon';
 

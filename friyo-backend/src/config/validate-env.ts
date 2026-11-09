@@ -2,6 +2,7 @@
 export function validateEnvironment(env: Record<string, unknown>) {
   if (env.NODE_ENV !== 'production') return env;
   const missing: string[] = [];
+  if (String(env.THEMEALDB_API_KEY ?? '').trim() === '1') missing.push('THEMEALDB_API_KEY (development key is not allowed in production)');
   const text = (key: string) => typeof env[key] === 'string' ? (env[key] as string).trim() : '';
   const required = ['DATABASE_URL', 'REDIS_URL', 'JWT_SECRET', 'JWT_REFRESH_SECRET', 'ADMIN_JWT_SECRET',
     'AWS_S3_BUCKET', 'AWS_SES_FROM_EMAIL', 'GOOGLE_CLIENT_IDS', 'APPLE_CLIENT_ID', 'APPLE_TEAM_ID',

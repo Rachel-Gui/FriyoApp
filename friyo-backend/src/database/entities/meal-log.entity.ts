@@ -15,6 +15,7 @@ export enum MealType {
 
 @Entity('meal_logs')
 @Index(['userId', 'loggedAt'])
+@Index('idx_meal_log_request', ['userId', 'clientRequestId'], { unique: true })
 export class MealLog {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -22,6 +23,9 @@ export class MealLog {
   @Index()
   @Column({ name: 'user_id', type: 'uuid' })
   userId: string;
+
+  @Column({ name: 'client_request_id', type: 'varchar', length: 100, nullable: true })
+  clientRequestId: string | null;
 
   @Column({ name: 'recipe_id', nullable: true, type: 'uuid' })
   recipeId: string | null;

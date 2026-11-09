@@ -1,8 +1,9 @@
-import {
-  ActivityIndicator, Alert, ScrollView, StyleSheet,
-  Text, TextInput, TouchableOpacity, View,
-} from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useAuthStore } from '@/store/authStore';
+import { LocalizedAlert as Alert, LocalizedText as Text, LocalizedTextInput as TextInput, LocalizedTouchableOpacity as TouchableOpacity } from '@/components/ui/LocalizedNative';
+import { ActivityIndicator, Modal, ScrollView, StyleSheet, View } from 'react-native';
 import { useCallback, useMemo, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -28,6 +29,19 @@ const SCANNER_ROUTE = '/(tabs)/fridge/scanner' as const;
 export default function FridgeScreen() {
   const router = useRouter();
   const qc = useQueryClient();
+  const userId = useAuthStore(state => state.user?.id);
+  const [updatePrompt, setUpdatePrompt] = useState(false);
+  useFocusEffect(useCallback(() => {
+    let active = true;
+    const key = `fridge-update-prompt:${userId ?? 'guest'}`;
+    void (async () => {
+      const last = Number(await AsyncStorage.getItem(key));
+      if (!active || Date.now() - last < 86400000) return;
+      setUpdatePrompt(true);
+      await AsyncStorage.setItem(key, String(Date.now()));
+    })().catch(() => { /* Storage failure must not interrupt inventory access. */ });
+    return () => { active = false; setUpdatePrompt(false); };
+  }, [userId]));
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [searchQuery, setSearchQuery] = useState('');
   const [quickChip, setQuickChip] = useState('All');
@@ -44,13 +58,13 @@ export default function FridgeScreen() {
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => fridgeService.deleteItem(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['fridge'] }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['fridge'] }); qc.invalidateQueries({ queryKey: ['recipes', 'fridge'] }); },
   });
 
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: Parameters<typeof fridgeService.updateItem>[1] }) =>
       fridgeService.updateItem(id, data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['fridge'] }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['fridge'] }); qc.invalidateQueries({ queryKey: ['recipes', 'fridge'] }); },
   });
 
   const uiItems = useMemo(() => allItems.map(toUiItem), [allItems]);
@@ -91,7 +105,7 @@ export default function FridgeScreen() {
 
         <Text style={styles.headerTitle}>My Fridge</Text>
 
-        <TouchableOpacity style={styles.scanBtn} onPress={openScanner}>
+        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Add ingredients" style={styles.scanBtn} onPress={openScanner}>
           <SFIcon name="camera" size={19} color={Colors.white} weight="fill" />
         </TouchableOpacity>
       </View>
@@ -211,6 +225,20 @@ export default function FridgeScreen() {
         </ScrollView>
       )}
 
+      <Modal visible={updatePrompt} transparent animationType="fade" onRequestClose={() => setUpdatePrompt(false)}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', padding: 24 }}>
+          <View style={{ backgroundColor: Colors.cream, borderRadius: 24, padding: 24, gap: 16 }} accessibilityViewIsModal>
+            <Text style={styles.headerTitle}>Update Fridge</Text>
+            <Text>Add new ingredients or review what you already have.</Text>
+            <TouchableOpacity accessibilityRole="button" style={[styles.chip, styles.chipActive, { height: 48 }]} onPress={() => { setUpdatePrompt(false); openScanner(); }}>
+              <Text style={styles.chipTextActive}>Add ingredients</Text>
+            </TouchableOpacity>
+            <TouchableOpacity accessibilityRole="button" style={{ padding: 12, alignItems: 'center' }} onPress={() => setUpdatePrompt(false)}>
+              <Text>Continue to My Fridge</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
       <FilterSheet
         visible={filterOpen}
         filters={filters}

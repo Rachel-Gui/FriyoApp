@@ -1,5 +1,7 @@
+import { LocalizedText as Text, LocalizedTouchableOpacity as TouchableOpacity } from '@/components/ui/LocalizedNative';
 import { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { useOnboardingStore } from '@/store/onboardingStore';
+import { View, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors } from '@/constants/Colors';
@@ -8,7 +10,8 @@ const TIMES = ['Quick (<30 min)', 'Moderate (30-60 min)', 'Leisurely (60+ min)']
 
 export default function Step7() {
   const router = useRouter();
-  const [selected, setSelected] = useState<string | null>(null);
+  const setTimePreference = useOnboardingStore(s => s.setTimePreference);
+  const [selected, setSelected] = useState<string | null>(useOnboardingStore.getState().timePreference || null);
 
   return (
     <SafeAreaView style={s.container}>
@@ -31,7 +34,7 @@ export default function Step7() {
       <View style={s.footer}>
         <TouchableOpacity
           style={[s.btn, !!selected && s.btnActive]}
-          onPress={selected ? () => router.push('/onboarding/step8') : undefined}
+          onPress={selected ? () => { setTimePreference(selected); router.push('/onboarding/step8'); } : undefined}
         >
           <Text style={[s.btnText, !!selected && s.btnTextActive]}>Choose at least one to next</Text>
         </TouchableOpacity>

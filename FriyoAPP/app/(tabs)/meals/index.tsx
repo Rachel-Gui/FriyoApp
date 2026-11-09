@@ -1,9 +1,8 @@
-import {
-  View, Text, ScrollView, TouchableOpacity, Image,
-  StyleSheet, Dimensions, Animated, Modal, PanResponder,
-  useColorScheme, TextInput, Alert,
-} from 'react-native';
+import { useLanguageStore } from '@/store/languageStore';
+import { LocalizedText as Text, LocalizedTouchableOpacity as TouchableOpacity, LocalizedTextInput as TextInput, LocalizedAlert as Alert } from '@/components/ui/LocalizedNative';
+import { View, ScrollView, Image, StyleSheet, Dimensions, Animated, Modal, PanResponder, useColorScheme } from 'react-native';
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors }  from '@/constants/Colors';
@@ -13,7 +12,7 @@ import { recipeService }   from '@/services/recipeService';
 import { localImageForText } from '@/services/localRecipeImages';
 import type { Recipe, WeekPlan as ApiWeekPlan } from '@/services/types';
 // ── Local types (previously imported from services/api) ───────────────────────
-type RecipeSummary = { id: string; name: string; cal: number; time: string; imageUrl?: string; mealTypes?: string[]; source?: 'saved' | 'suggested' | 'friend' };
+type RecipeSummary = { id: string; name: string; nameZh?: string; nameEn?: string; cal: number | null; time: string; imageUrl?: string; mealTypes?: string[]; source?: 'saved' | 'suggested' | 'friend' };
 type WeekPlanSlot  = { dayIndex: number; slotType: string; recipe: RecipeSummary };
 
 const { width, height } = Dimensions.get('window');
@@ -69,22 +68,23 @@ function getWeekDates(monday: Date): number[] {
   });
 }
 
-function formatWeekLabel(monday: Date): string {
+function formatWeekLabel(monday: Date, language: 'en' | 'zh'): string {
   const end = new Date(monday);
   end.setDate(monday.getDate() + 6);
   const opts: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' };
-  return `${monday.toLocaleDateString('en-GB', opts)} – ${end.toLocaleDateString('en-GB', opts)}`;
+  return `${monday.toLocaleDateString(language === 'zh' ? 'zh-CN' : 'en-GB', opts)} – ${end.toLocaleDateString(language === 'zh' ? 'zh-CN' : 'en-GB', opts)}`;
 }
 
 function toIsoDate(d: Date): string {
-  return d.toISOString().split('T')[0];
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 function recipeToSummary(recipe: Recipe, idx = 0): RecipeSummary {
   return {
     id:       recipe.id,
     name:     recipe.title,
-    cal:      recipe.caloriesPerServing ?? 0,
+    nameZh: recipe.titleZh ?? undefined, nameEn: recipe.titleEn ?? undefined,
+    cal:      Number(recipe.caloriesPerServing) > 0 ? Number(recipe.caloriesPerServing) : null,
     time:     `${(recipe.prepTimeMin ?? 0) + (recipe.cookTimeMin ?? 0)} min`,
     imageUrl: recipe.imageUrl,
     mealTypes: recipe.mealType ? [recipe.mealType.charAt(0).toUpperCase() + recipe.mealType.slice(1)] : undefined,
@@ -151,6 +151,9 @@ function Skel({ w, h, r = 8, dark }: { w: number | string; h: number; r?: number
 
 // ── Main screen ────────────────────────────────────────────────────────────────
 export default function MealsWeek() {
+  const language = useLanguageStore(state => state.language);
+  const dayLabels = language === 'zh' ? ['一','二','三','四','五','六','日'] : DAY_LABELS;
+  const title = (r: RecipeSummary) => (language === 'zh' ? r.nameZh : r.nameEn) || r.name;
   const router  = useRouter();
   const insets  = useSafeAreaInsets();
   const scheme  = useColorScheme() ?? 'light';
@@ -167,7 +170,7 @@ export default function MealsWeek() {
   const dayOfWeek  = (today.getDay() + 6) % 7; // 0=Mon, 6=Sun
   const weekStart  = getMonWeekStart();
   const weekDates  = getWeekDates(weekStart);
-  const weekLabel  = formatWeekLabel(weekStart);
+  const weekLabel  = formatWeekLabel(weekStart, language);
 
   // ── API-backed state ───────────────────────────────────────────────────────
   const [weekPlan,    setWeekPlan]    = useState<WeekPlan>(buildEmptyPlan());
@@ -183,51 +186,59 @@ export default function MealsWeek() {
   const [search,       setSearch]       = useState('');
   const isExpandedRef  = useRef(false);
 
-  const HALF_H = height * 0.52;
-  const FULL_H = height * 0.88;
+  const HALF_H = height * 0.75;
+  const FULL_H = height - insets.top;
   const sheetAnim = useRef(new Animated.Value(HALF_H)).current;
 
-  // ── Fetch week plan ────────────────────────────────────────────────────────
-  useEffect(() => {
-    const start = weekStart.toISOString().split('T')[0];
+  // Refresh on returning from cooking; hydrate every planned recipe, not only bookmarks.
+  useFocusEffect(useCallback(() => {
+    let active = true;
+    const monday = getMonWeekStart();
     setIsLoading(true);
+    (async () => {
+      const apiPlan = await mealPlanService.getWeekPlan(toIsoDate(monday));
+      const ids = [...new Set(Object.values(apiPlan).flatMap(day => [
+        day.planned?.breakfast, day.planned?.lunch, day.planned?.dinner, ...(day.planned?.snacks ?? []),
+      ]).filter((id): id is string => !!id))];
+      const recipes = await Promise.all(ids.map(id => recipeService.getRecipeDetail(id)));
+      if (!active) return;
+      const plan = apiWeekToPlan(apiPlan, monday, recipes.map(recipeToSummary));
+      setWeekPlan(plan);
+      setDailyCals(Array.from({ length: 7 }, (_, day) => plan[day].reduce((sum, slot) => sum + (slot.recipe?.cal ?? 0), 0)));
+    })().catch((error: any) => {
+      if (active) Alert.alert('Could not load meal plan', error?.message ?? 'Please try again.');
+    }).finally(() => { if (active) setIsLoading(false); });
+    return () => { active = false; };
+  }, []));
 
-    Promise.all([
-      mealPlanService.getWeekPlan(start),
-      recipeService.getSavedRecipes().catch(() => []),
-    ])
-      .then(([apiPlan, savedRecipes]) => {
-        const recipeSummaries = savedRecipes.map(recipeToSummary);
-        setWeekPlan(apiWeekToPlan(apiPlan, weekStart, recipeSummaries));
-        setPickerRecipes(recipeSummaries);
-        setDailyCals(
-          Array.from({ length: 7 }, (_, dayIdx) =>
-            (apiWeekToPlan(apiPlan, weekStart, recipeSummaries)[dayIdx] ?? [])
-              .reduce((sum, slot) => sum + (slot.recipe?.cal ?? 0), 0),
-          ),
-        );
-      })
-      .catch((error: any) => {
-        setWeekPlan(buildEmptyPlan());
-        setDailyCals(Array(7).fill(0));
-        Alert.alert('Could not load meal plan', error?.message ?? 'Please try again later.');
-      })
-      .finally(() => setIsLoading(false));
-  }, []);
-
-  // ── Fetch saved recipes for picker ────────────────────────────────────────
+  const [pickerLoading, setPickerLoading] = useState(false);
+  const [pickerError, setPickerError] = useState('');
+  const [pickerPage, setPickerPage] = useState(1);
+  const [pickerHasMore, setPickerHasMore] = useState(false);
   useEffect(() => {
     if (!showPicker) return;
-    recipeService.getSavedRecipes()
-      .then(recipes => {
-        const saved = recipes.map(recipeToSummary);
-        setPickerRecipes(saved);
-      })
-      .catch((error: any) => {
-        setPickerRecipes([]);
-        Alert.alert('Could not load saved recipes', error?.message ?? 'Please try again.');
-      });
-  }, [showPicker, search]);
+    let active = true;
+    setPickerLoading(true);
+    setPickerError('');
+    const timer = setTimeout(async () => {
+      try {
+        const saved = await recipeService.getSavedRecipes();
+        const savedIds = new Set(saved.map(recipe => recipe.id));
+        const result = filter === 'Saved'
+          ? { items: saved.filter(recipe => recipe.title.toLowerCase().includes(search.trim().toLowerCase())), pages: 1 }
+          : search.trim()
+            ? await recipeService.searchRecipes({ q: search.trim(), page: pickerPage, limit: 30 })
+            : await recipeService.listRecipes(pickerPage, 30);
+        if (!active) return;
+        const recipes = result.items.map(recipe => ({ ...recipeToSummary(recipe), source: savedIds.has(recipe.id) ? 'saved' as const : 'suggested' as const }));
+        setPickerRecipes(previous => pickerPage === 1 ? recipes : [...previous, ...recipes]);
+        setPickerHasMore(pickerPage < (result.pages ?? 1));
+      } catch (error: any) {
+        if (active) { setPickerRecipes([]); setPickerError(error?.message ?? 'Could not load recipes.'); }
+      } finally { if (active) setPickerLoading(false); }
+    }, 250);
+    return () => { active = false; clearTimeout(timer); };
+  }, [showPicker, search, filter, pickerPage]);
 
   // ── PanResponder for bottom sheet ─────────────────────────────────────────
   const panResponder = useRef(
@@ -241,7 +252,10 @@ export default function MealsWeek() {
         const expand   = () => { isExpandedRef.current = true;  Animated.spring(sheetAnim, { toValue: FULL_H, useNativeDriver: false }).start(); };
         const collapse = () => { isExpandedRef.current = false; Animated.spring(sheetAnim, { toValue: HALF_H, useNativeDriver: false }).start(); };
         if (gs.dy < -40) expand();
-        else if (gs.dy > 40) collapse();
+        else if (gs.dy > 40) {
+          if (isExpandedRef.current) collapse();
+          else { setShowPicker(false); isExpandedRef.current = false; }
+        }
         else isExpandedRef.current ? expand() : collapse();
       },
     })
@@ -250,6 +264,7 @@ export default function MealsWeek() {
   // ── Open / close picker ───────────────────────────────────────────────────
   const openPicker = (day: number, slotIdx: number) => {
     setPickingFor({ day, slotIdx });
+    setSearch(''); setFilter('All'); setPickerPage(1); setPickerRecipes([]);
     isExpandedRef.current = false;
     sheetAnim.setValue(HALF_H);
     setShowPicker(true);
@@ -267,7 +282,7 @@ export default function MealsWeek() {
     });
     setDailyCals(prev => prev.map((cal, i) => i === day
       ? (weekPlan[day] ?? []).reduce((sum, slot, currentIdx) =>
-          sum + (currentIdx === slotIdx ? recipe.cal : slot.recipe?.cal ?? 0), 0)
+          sum + (currentIdx === slotIdx ? recipe.cal ?? 0 : slot.recipe?.cal ?? 0), 0)
       : cal
     ));
     setShowPicker(false);
@@ -317,11 +332,13 @@ export default function MealsWeek() {
   }, [weekPlan, weekStart]);
 
   const todaySlots = weekPlan[selectedDay] ?? MEAL_TYPES.map(t => ({ type: t, recipe: null }));
+  const dayNutritionComplete = todaySlots.some(slot => slot.recipe) && todaySlots.every(slot => !slot.recipe || slot.recipe.cal !== null);
+  const weekNutritionComplete = Object.values(weekPlan).some(slots => slots.some(slot => slot.recipe)) && Object.values(weekPlan).every(slots => slots.every(slot => !slot.recipe || slot.recipe.cal !== null));
   const dayCals    = todaySlots.reduce((sum, slot) => sum + (slot.recipe?.cal ?? 0), 0);
   const computedDailyCals = Array.from({ length: 7 }, (_, dayIdx) =>
     (weekPlan[dayIdx] ?? []).reduce((sum, slot) => sum + (slot.recipe?.cal ?? 0), 0)
   );
-  const chartCals = computedDailyCals.some(Boolean) ? computedDailyCals : dailyCals;
+  const chartCals = computedDailyCals;
   const maxCal     = Math.max(...chartCals, 1, 2000);
 
   const targetMealType = pickingFor ? todaySlots[pickingFor.slotIdx]?.type : null;
@@ -331,7 +348,7 @@ export default function MealsWeek() {
       if (filter === 'Saved') return recipe.source === 'saved';
       return true;
     })
-    .filter(recipe => !targetMealType || !recipe.mealTypes?.length || recipe.mealTypes.includes(targetMealType))
+
     .filter(r => r.name.toLowerCase().includes(search.toLowerCase()));
 
   const BOTTOM_PAD = 70 + insets.bottom;
@@ -357,7 +374,7 @@ export default function MealsWeek() {
 
         {/* ── Day selector ─────────────────────────────────────────────────── */}
         <View style={[st.daySelectorWrap, { backgroundColor: card }]}>
-          {DAY_LABELS.map((day, i) => {
+          {dayLabels.map((day, i) => {
             const hasMeal = weekPlan[i]?.some(s => s.recipe !== null);
             const isSel   = selectedDay === i;
             const isToday = i === dayOfWeek;
@@ -383,9 +400,9 @@ export default function MealsWeek() {
             <Text style={[st.daySummaryTitle, { color: txt }]}>
               {['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'][selectedDay]}
             </Text>
-            {dayCals > 0 && (
+            {dayNutritionComplete && (
               <View style={[st.calBadge, { backgroundColor: isDark ? '#2A2A00' : Colors.yellowLight }]}>
-                <SFIcon name="flame" size={13} color={Colors.orange} /><Text style={[st.calBadgeTxt, { color: Colors.black }]}> {dayCals} kcal</Text>
+                <SFIcon name="flame" size={13} color={Colors.orange} /><Text style={[st.calBadgeTxt, { color: Colors.black }]}> ≈{dayCals} kcal</Text>
               </View>
             )}
           </View>
@@ -406,9 +423,9 @@ export default function MealsWeek() {
                     <Image source={imgSrc(slot.recipe.imageUrl, slot.recipe.name, slotIdx)} style={st.filledImg} resizeMode="cover" />
                     <View style={st.filledOverlay} />
                     <View style={st.filledContent}>
-                      <Text style={st.filledName} numberOfLines={1}>{slot.recipe.name}</Text>
+                      <Text translate={false} style={st.filledName} numberOfLines={1}>{title(slot.recipe)}</Text>
                       <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
-                        <View style={[st.metaPill, { flexDirection: 'row', alignItems: 'center', gap: 4 }]}><SFIcon name="flame" size={11} color={Colors.orange} /><Text style={st.metaTxt}>{slot.recipe.cal} kcal</Text></View>
+                        {slot.recipe.cal !== null && <View style={[st.metaPill, { flexDirection: 'row', alignItems: 'center', gap: 4 }]}><SFIcon name="flame" size={11} color={Colors.orange} /><Text style={st.metaTxt}>≈{slot.recipe.cal} kcal</Text></View>}
                         <View style={[st.metaPill, { flexDirection: 'row', alignItems: 'center', gap: 4 }]}><SFIcon name="timer" size={11} color="rgba(0,0,0,0.5)" /><Text style={st.metaTxt}>{slot.recipe.time}</Text></View>
                       </View>
                     </View>
@@ -437,9 +454,9 @@ export default function MealsWeek() {
         )}
 
         {/* ── Weekly calorie chart ──────────────────────────────────────────── */}
-        <View style={[st.chartCard, { backgroundColor: card }]}>
+        {weekNutritionComplete && <View style={[st.chartCard, { backgroundColor: card }]}>
           <View style={st.chartHeader}>
-            <Text style={[st.chartTitle, { color: txt }]}>Weekly Calories</Text>
+            <Text style={[st.chartTitle, { color: txt }]}>Estimated Weekly Calories</Text>
             <Text style={[st.chartSub, { color: sub }]}>Goal: 2000 kcal/day</Text>
           </View>
           <View style={st.chartBars}>
@@ -459,7 +476,7 @@ export default function MealsWeek() {
                     ]} />
                   </View>
                   <Text style={[st.barDayLabel, { color: isSel ? txt : sub, fontFamily: isSel ? 'DMSans_700Bold' : 'DMSans_400Regular' }]}>
-                    {DAY_LABELS[i]}
+                    {dayLabels[i]}
                   </Text>
                 </TouchableOpacity>
               );
@@ -468,18 +485,18 @@ export default function MealsWeek() {
           <View style={[st.goalLine, { bottom: 28 + (2000 / maxCal) * MAX_BAR_H, borderColor: isDark ? '#444' : Colors.borderGray }]}>
             <Text style={[st.goalLineTxt, { color: sub }]}>2000</Text>
           </View>
-        </View>
+        </View>}
 
       </ScrollView>
 
       {/* ── Recipe Picker Modal ───────────────────────────────────────────────── */}
       <Modal visible={showPicker} transparent animationType="slide" onRequestClose={() => setShowPicker(false)}>
         <TouchableOpacity style={st.modalBack} activeOpacity={1} onPress={() => setShowPicker(false)} />
-        <Animated.View style={[st.sheet, { height: sheetAnim, backgroundColor: card }]}>
+        <Animated.View style={[st.sheet, { height: sheetAnim, backgroundColor: card, paddingBottom: insets.bottom }]}>
           <View {...panResponder.panHandlers} style={st.handleArea}>
             <View style={[st.handle, { backgroundColor: border }]} />
           </View>
-          <View style={st.sheetHeader}>
+          <View {...panResponder.panHandlers} style={st.sheetHeader}>
             <Text style={[st.sheetTitle, { color: txt }]}>
               {pickingFor ? `Add ${todaySlots[pickingFor.slotIdx]?.type ?? 'Meal'}` : 'Choose a Recipe'}
             </Text>
@@ -493,7 +510,7 @@ export default function MealsWeek() {
               <TouchableOpacity
                 key={t}
                 style={[st.filterChip, filter === t && { backgroundColor: Colors.yellow }]}
-                onPress={() => setFilter(t)}
+                onPress={() => { setFilter(t); setPickerPage(1); }}
               >
                 <Text style={[st.filterTxt, { color: filter === t ? Colors.black : sub }]}>{t}</Text>
               </TouchableOpacity>
@@ -507,15 +524,15 @@ export default function MealsWeek() {
               placeholder="Search recipes"
               placeholderTextColor={sub}
               value={search}
-              onChangeText={setSearch}
+              onChangeText={value => { setSearch(value); setPickerPage(1); }}
             />
           </View>
           {/* Grid */}
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={st.recipeGrid}>
             {filteredRecipes.length === 0 ? (
               <View style={st.emptyPicker}>
-                <Text style={[st.emptyPickerTitle, { color: txt }]}>No recipes here yet</Text>
-                <Text style={[st.emptyPickerSub, { color: sub }]}>Try All, clear search, or save recipes from Home first.</Text>
+                <Text style={[st.emptyPickerTitle, { color: txt }]}>{pickerLoading ? "Loading recipes…" : pickerError ? "Could not load recipes" : "No recipes found"}</Text>
+                <Text style={[st.emptyPickerSub, { color: sub }]}>{pickerError || "Try another keyword or switch to All."}</Text>
               </View>
             ) : filteredRecipes.map((r, idx) => (
               <TouchableOpacity
@@ -526,11 +543,14 @@ export default function MealsWeek() {
               >
                 <Image source={imgSrc(r.imageUrl, r.name, idx)} style={st.recipeItemImg} resizeMode="cover" />
                 <View style={st.recipeItemOverlay}>
-                  <Text style={st.recipeItemName} numberOfLines={2}>{r.name}</Text>
-                  <SFIcon name="flame" size={11} color={Colors.orange} /><Text style={st.recipeItemCal}> {r.cal} kcal</Text>
+                  <Text translate={false} style={st.recipeItemName} numberOfLines={2}>{title(r)}</Text>
+                  {r.cal !== null && <><SFIcon name="flame" size={11} color={Colors.orange} /><Text style={st.recipeItemCal}> ≈{r.cal} kcal</Text></>}
                 </View>
               </TouchableOpacity>
             ))}
+            {pickerHasMore && <TouchableOpacity disabled={pickerLoading} onPress={() => setPickerPage(page => page + 1)} style={st.emptyPicker}>
+              <Text style={{ color: txt }}>{pickerLoading ? 'Loading…' : 'Load more recipes'}</Text>
+            </TouchableOpacity>}
           </ScrollView>
           <TouchableOpacity style={[st.cancelBtn, { backgroundColor: cardAlt }]} onPress={() => setShowPicker(false)}>
             <Text style={[st.cancelTxt, { color: txt }]}>Cancel</Text>

@@ -10,6 +10,15 @@ import { StepType } from '../../../database/entities/recipe-step.entity';
 
 export class CreateRecipeIngredientDto {
   @IsOptional()
+  @IsString()
+  display_name_zh?: string;
+
+  @IsOptional()
+  @IsString()
+  display_name_en?: string;
+
+
+  @IsOptional()
   @IsUUID('4')
   ingredient_id?: string;
 
@@ -44,6 +53,25 @@ export class CreateRecipeIngredientDto {
 }
 
 export class CreateRecipeStepDto {
+  @IsOptional() @IsInt() @Min(1) @Type(() => Number)
+  parallel_with_step_number?: number;
+  @IsOptional()
+  @IsString()
+  description_zh?: string;
+
+  @IsOptional()
+  @IsString()
+  description_en?: string;
+
+  @IsOptional()
+  @IsString()
+  tips_zh?: string;
+
+  @IsOptional()
+  @IsString()
+  tips_en?: string;
+
+
   @IsInt()
   @Min(1)
   @Type(() => Number)
@@ -72,6 +100,23 @@ export class CreateRecipeStepDto {
 }
 
 export class CreateRecipeDto {
+  @IsOptional()
+  @IsString()
+  title_en?: string;
+
+  @IsOptional()
+  @IsString()
+  description_zh?: string;
+
+  @IsOptional()
+  @IsString()
+  description_en?: string;
+
+
+  @IsOptional()
+  @IsUrl({ protocols: ['https'], require_protocol: true })
+  source_url?: string;
+
   @IsString()
   title: string;
 

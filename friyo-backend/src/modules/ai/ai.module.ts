@@ -1,3 +1,6 @@
+import { AiUsageService } from './ai-usage.service';
+import { User } from '../../database/entities/user.entity';
+import { RecipesModule } from '../recipes/recipes.module';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
@@ -11,11 +14,12 @@ import { AiService }    from './ai.service';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([FridgeItem, UserProfile, MealLog]),
+    TypeOrmModule.forFeature([User, FridgeItem, UserProfile, MealLog]),
     AuthModule,
+    RecipesModule,
   ],
   controllers: [AiController],
-  providers:   [AiService],
+  providers:   [AiService, AiUsageService],
   exports:     [AiService],
 })
 export class AiModule {}

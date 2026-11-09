@@ -1,9 +1,8 @@
-import {
-  View, Text, ScrollView, TouchableOpacity,
-  StyleSheet, Dimensions, Animated, Modal,
-  useColorScheme, Alert,
-} from 'react-native';
-import { useState, useRef, useEffect } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
+import { useLanguageStore } from '@/store/languageStore';
+import { LocalizedText as Text, LocalizedTouchableOpacity as TouchableOpacity, LocalizedAlert as Alert } from '@/components/ui/LocalizedNative';
+import { View, ScrollView, StyleSheet, Dimensions, Animated, Modal, useColorScheme } from 'react-native';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useRouter } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -12,7 +11,7 @@ import { SFIcon }  from '@/components/ui/SFIcon';
 import { mealPlanService } from '@/services/mealPlanService';
 import { aiService }       from '@/services/aiService';
 // ── Local types (previously imported from services/api) ───────────────────────
-type MealLogEntry = { type: 'breakfast' | 'lunch' | 'dinner' | 'snack'; name: string; cal: number };
+type MealLogEntry = { type: 'breakfast' | 'lunch' | 'dinner' | 'snack'; name: string; nameZh?: string; nameEn?: string; cal: number };
 type AiInsight    = { icon: string; text: string };
 
 const { width, height } = Dimensions.get('window');
@@ -67,6 +66,7 @@ const ins = StyleSheet.create({
 
 // ── Main component ─────────────────────────────────────────────────────────────
 export default function MealsMonth() {
+  const language = useLanguageStore(state => state.language);
   const router  = useRouter();
   const insets  = useSafeAreaInsets();
   const scheme  = useColorScheme() ?? 'light';
@@ -100,11 +100,13 @@ export default function MealsMonth() {
   });
 
   // ── Fetch month plan ───────────────────────────────────────────────────────
-  useEffect(() => {
+  useFocusEffect(useCallback(() => {
+    let active = true;
     setIsLoading(true);
 
     mealPlanService.getMonth(monthKey(year, month))
       .then((result) => {
+        if (!active) return;
         const grouped: Record<number, MealLogEntry[]> = {};
         result.logs.forEach((log: any) => {
           const day = new Date(log.loggedAt).getDate();
@@ -112,6 +114,7 @@ export default function MealsMonth() {
           grouped[day].push({
             type: (log.mealType ?? 'snack') as MealLogEntry['type'],
             name: mealName(log),
+            nameZh: log.recipe?.titleZh, nameEn: log.recipe?.titleEn,
             cal:  log.caloriesTotal ?? log.recipe?.caloriesPerServing ?? 0,
           });
         });
@@ -125,6 +128,7 @@ export default function MealsMonth() {
         });
       })
       .catch((error: any) => {
+        if (!active) return;
         setLogged({});
         setStats({
           mealsCooked: 0,
@@ -134,8 +138,9 @@ export default function MealsMonth() {
         });
         Alert.alert('Could not load meal history', error?.message ?? 'Please try again later.');
       })
-      .finally(() => setIsLoading(false));
-  }, [year, month]);
+      .finally(() => { if (active) setIsLoading(false); });
+    return () => { active = false; };
+  }, [year, month]));
 
   // ── Fetch AI insights ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -149,7 +154,7 @@ export default function MealsMonth() {
         })));
       })
       .catch(() => setInsights([]));
-  }, [showAI]);
+  }, [showAI, language]);
 
   // ── Drawer helpers ─────────────────────────────────────────────────────────
   const openDrawer = (day: number) => {
@@ -196,7 +201,7 @@ export default function MealsMonth() {
           <TouchableOpacity onPress={prevMonth} style={mo.navArrow}>
             <Text style={[mo.navArrowTxt, { color: sub }]}>‹</Text>
           </TouchableOpacity>
-          <Text style={[mo.monthTitle, { color: txt }]}>{MONTH_NAMES[month]} {year}</Text>
+          <Text style={[mo.monthTitle, { color: txt }]}>{language === 'zh' ? `${year}年${month + 1}月` : `${MONTH_NAMES[month]} ${year}`} </Text>
           <TouchableOpacity onPress={nextMonth} style={mo.navArrow}>
             <Text style={[mo.navArrowTxt, { color: sub }]}>›</Text>
           </TouchableOpacity>
@@ -260,7 +265,7 @@ export default function MealsMonth() {
         <View style={[mo.calendarCard, { backgroundColor: card }]}>
           {/* Day name headers */}
           <View style={mo.dayHeaders}>
-            {DAY_NAMES.map((d, i) => (
+            {(language === 'zh' ? ['日','一','二','三','四','五','六'] : DAY_NAMES).map((d, i) => (
               <View key={i} style={mo.dayHeaderCell}>
                 <Text style={[mo.dayHeaderTxt, { color: sub }]}>{d}</Text>
               </View>
@@ -337,7 +342,7 @@ export default function MealsMonth() {
           <View style={[mo.drawerHeader, { borderBottomColor: border }]}>
             <View>
               <Text style={[mo.drawerTitle, { color: txt }]}>
-                {selDay ? `${MONTH_NAMES[month]} ${selDay}` : ''}
+                {selDay ? (language === 'zh' ? `${month + 1}月${selDay}日` : `${MONTH_NAMES[month]} ${selDay}`) : ''}
               </Text>
               <Text style={[mo.drawerSub, { color: sub }]}>
                 {dayEntries.length} meal{dayEntries.length !== 1 ? 's' : ''} logged
@@ -361,7 +366,7 @@ export default function MealsMonth() {
                   <View key={i} style={[mo.drawerEntry, { backgroundColor: cardAlt }]}>
                     <View style={[mo.drawerEntryDot, { backgroundColor: dotColor }]} />
                     <View style={{ flex: 1 }}>
-                      <Text style={[mo.drawerEntryName, { color: txt }]}>{entry.name}</Text>
+                      <Text translate={false} style={[mo.drawerEntryName, { color: txt }]}>{(language === 'zh' ? entry.nameZh : entry.nameEn) || entry.name}</Text>
                       <Text style={[mo.drawerEntryType, { color: sub }]}>
                         {entry.type.charAt(0).toUpperCase() + entry.type.slice(1)} · {entry.cal} kcal
                       </Text>

@@ -23,6 +23,21 @@ export class RecipeStep {
   @Column({ type: 'text' })
   description: string;
 
+  @Column({ name: 'description_zh', nullable: true, type: 'text' })
+  descriptionZh: string | null;
+
+  @Column({ name: 'description_en', nullable: true, type: 'text' })
+  descriptionEn: string | null;
+
+  @Column({ name: 'tips_zh', nullable: true, type: 'text' })
+  tipsZh: string | null;
+
+  @Column({ name: 'tips_en', nullable: true, type: 'text' })
+  tipsEn: string | null;
+
+  @Column({ name: 'parallel_with_step_number', type: 'int', nullable: true })
+  parallelWithStepNumber: number | null;
+
   @Column({ name: 'duration_min', type: 'int', nullable: true })
   durationMin: number | null;
 

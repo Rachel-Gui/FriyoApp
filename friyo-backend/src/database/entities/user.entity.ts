@@ -60,6 +60,9 @@ export class User {
   @Column({ name: 'is_banned', default: false })
   isBanned: boolean;
 
+  @Column({ name: 'vip_expires_at', type: 'timestamptz', nullable: true })
+  vipExpiresAt: Date | null;
+
   @Column({ name: 'last_active_at', nullable: true, type: 'timestamptz' })
   lastActiveAt: Date | null;
 

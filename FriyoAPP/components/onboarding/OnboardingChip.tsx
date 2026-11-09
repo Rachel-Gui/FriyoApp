@@ -1,4 +1,5 @@
-import { TouchableOpacity, Text, StyleSheet } from 'react-native';
+import { LocalizedTouchableOpacity as TouchableOpacity, LocalizedText as Text } from '@/components/ui/LocalizedNative';
+import { StyleSheet } from 'react-native';
 import { Colors } from '@/constants/Colors';
 
 interface Props {

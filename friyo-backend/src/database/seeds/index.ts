@@ -1,3 +1,4 @@
+import { bilingualSeedRecipes } from '../migrations/007_bilingual_recipes';
 /**
  * Seed script — run with:
  *   npm run seed:run
@@ -64,7 +65,7 @@ interface RecipeSeed {
   cuisine: string; mealType: RecipeMealType;
   difficulty: RecipeDifficulty; prepMin: number; cookMin: number;
   servings: number; calories: number;
-  steps: Array<{ num: number; title: string; dur: number; type: StepType; info: string }>;
+  steps: Array<{ num: number; title: string; dur: number; type: StepType; info: string; parallel?: number }>;
   ingredientNames: string[];
 }
 
@@ -81,7 +82,7 @@ const RECIPES: RecipeSeed[] = [
       { num: 1, title: 'Season the chicken',    dur: 2,  type: StepType.HANDS_ON,  info: 'Pat chicken dry. Season both sides generously with salt, pepper, and dried oregano.' },
       { num: 2, title: 'Sear the chicken',      dur: 8,  type: StepType.HANDS_ON,  info: 'Heat oil in a large skillet over medium-high. Sear chicken 4 min per side until golden brown. Remove to a plate.' },
       { num: 3, title: 'Rest the chicken',      dur: 5,  type: StepType.HANDS_OFF, info: 'Cover chicken loosely with foil and rest on the plate.' },
-      { num: 4, title: 'Make the cream sauce',  dur: 5,  type: StepType.HANDS_ON,  info: 'In the same pan, sauté garlic 30 s. Add sun-dried tomatoes 1 min. Pour in cream, simmer 3 min, then stir in parmesan.' },
+      { num: 4, parallel: 3, title: 'Make the cream sauce',  dur: 5,  type: StepType.HANDS_ON,  info: 'In the same pan, sauté garlic 30 s. Add sun-dried tomatoes 1 min. Pour in cream, simmer 3 min, then stir in parmesan.' },
       { num: 5, title: 'Finish and plate',      dur: 2,  type: StepType.HANDS_ON,  info: 'Wilt spinach into sauce. Return chicken, spoon sauce over. Serve immediately.' },
     ],
   },
@@ -123,7 +124,7 @@ const RECIPES: RecipeSeed[] = [
     ingredientNames: ['Pasta', 'Garlic', 'Olive Oil', 'Parmesan', 'Lemon'],
     steps: [
       { num: 1, title: 'Boil pasta',            dur: 10, type: StepType.HANDS_OFF, info: 'Cook pasta in well-salted boiling water until al dente. Reserve 1 cup pasta water before draining.' },
-      { num: 2, title: 'Toast garlic',          dur: 3,  type: StepType.HANDS_ON,  info: 'Warm oil in a large pan over medium. Add sliced garlic and cook until golden and fragrant, about 2-3 min.' },
+      { num: 2, parallel: 1, title: 'Toast garlic',          dur: 3,  type: StepType.HANDS_ON,  info: 'Warm oil in a large pan over medium. Add sliced garlic and cook until golden and fragrant, about 2-3 min.' },
       { num: 3, title: 'Combine',               dur: 2,  type: StepType.HANDS_ON,  info: 'Add drained pasta to pan. Toss with garlic oil, splash of pasta water, lemon zest, and parmesan.' },
     ],
   },
@@ -209,6 +210,7 @@ async function seed(ds: DataSource) {
         title:             r.title,
         titleZh:           r.titleZh,
         description:       r.description,
+        descriptionZh: bilingualSeedRecipes.find(item => item.title === r.title)?.description ?? null,
         cuisineType:       r.cuisine,
         mealType:          r.mealType,
         difficulty:        r.difficulty,
@@ -235,6 +237,7 @@ async function seed(ds: DataSource) {
         recipeId:     recipe.id,
         ingredientId: ing.id,
         displayName:  ing.name,
+        displayNameZh: ing.nameZh,
         quantity:     100,
         unit:         ing.unit,
         isOptional:   false,
@@ -248,7 +251,9 @@ async function seed(ds: DataSource) {
         recipeId:    recipe.id,
         stepNumber:  step.num,
         description: `${step.title}: ${step.info}`,
+        descriptionZh: bilingualSeedRecipes.find(item => item.title === r.title)?.steps[step.num - 1] ?? null,
         durationMin: step.dur,
+        parallelWithStepNumber: step.parallel ?? null,
         stepType:    step.type,
       }));
     }

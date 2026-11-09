@@ -1,23 +1,16 @@
+import { LocalizedAlert as Alert, LocalizedText as Text, LocalizedTextInput as TextInput, LocalizedTouchableOpacity as TouchableOpacity } from '@/components/ui/LocalizedNative';
 import { notificationService } from '@/services/notificationService';
+import { aiService } from '@/services/aiService';
+import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  Linking,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Linking, SafeAreaView, ScrollView, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Colors } from '@/constants/Colors';
 import { useAuthStore } from '@/store/authStore';
 import { aiConsentService } from '@/services/aiConsentService';
 
 export default function SettingsScreen() {
+  const { data: usage, error: usageError } = useQuery({ queryKey: ['ai', 'usage'], queryFn: aiService.getUsage });
   const router = useRouter();
   const user = useAuthStore(state => state.user);
   const logout = useAuthStore(state => state.logout);
@@ -98,6 +91,14 @@ export default function SettingsScreen() {
           </View>
         </View>
 
+        <Text style={styles.sectionLabel}>FRIYO VIP</Text>
+        <View style={styles.profileCard}>
+          <View style={styles.profileText}>
+            <Text style={styles.name}>{usage?.plan === 'vip' ? 'VIP · Unlimited AI' : 'Free plan'}</Text>
+            <Text style={styles.email}>{usageError ? 'Could not load AI allowance.' : !usage ? 'Loading AI allowance…' : usage.plan === 'vip' ? `Active until ${new Date(usage.expiresAt!).toLocaleDateString()}` : usage.unlimited ? 'AI access is currently unlimited.' : `${usage.remaining} of ${usage.dailyLimit} AI requests remaining today (UTC).`}</Text>
+            {usage?.plan !== 'vip' && <Text style={styles.email}>VIP subscriptions will be available when the store setup is complete.</Text>}
+          </View>
+        </View>
         <Text style={styles.sectionLabel}>ACCOUNT</Text>
         <View style={styles.card}>
           <TouchableOpacity

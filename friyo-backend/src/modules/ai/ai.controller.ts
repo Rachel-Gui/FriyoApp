@@ -1,7 +1,8 @@
+import { AiUsageService } from './ai-usage.service';
 import { Throttle } from '@nestjs/throttler';
 import {
   Controller, Post, Get, Body, Query,
-  UseGuards, ParseIntPipe, DefaultValuePipe,
+  UseGuards, ParseIntPipe, DefaultValuePipe, ParseEnumPipe,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
 
@@ -17,22 +18,27 @@ import { ChatDto, QuickSuggestDto, AnalyzeNutritionDto } from './dto/chat.dto';
 @Throttle({ default: { limit: 20, ttl: 60_000 } })
 @Controller('ai')
 export class AiController {
-  constructor(private readonly aiService: AiService) {}
+  constructor(private readonly aiService: AiService, private readonly usage: AiUsageService) {}
 
   // ── POST /ai/chat ──────────────────────────────────────────────────────────
 
+  @Get('usage')
+  usageStatus(@CurrentUser() user: User) { return this.usage.status(user.id); }
+
   @Post('chat')
   @ApiOperation({ summary: 'Send a message to the Friyo AI chef assistant' })
-  chat(@CurrentUser() user: User, @Body() dto: ChatDto) {
-    return this.aiService.chat(user.id, dto.message, dto.conversationId);
+  async chat(@CurrentUser() user: User, @Body() dto: ChatDto) {
+    await this.usage.consume(user.id);
+    return this.aiService.chat(user.id, dto.message, dto.conversationId, dto.language, dto.shoppingList);
   }
 
   // ── POST /ai/suggest ───────────────────────────────────────────────────────
 
   @Post('suggest')
   @ApiOperation({ summary: 'Get a quick one-shot recipe suggestion based on fridge + time' })
-  suggest(@CurrentUser() user: User, @Body() dto: QuickSuggestDto) {
-    return this.aiService.quickSuggest(user.id, dto.context);
+  async suggest(@CurrentUser() user: User, @Body() dto: QuickSuggestDto) {
+    await this.usage.consume(user.id);
+    return this.aiService.quickSuggest(user.id, dto.context, dto.language);
   }
 
   // ── GET /ai/insights ───────────────────────────────────────────────────────
@@ -43,15 +49,17 @@ export class AiController {
   insights(
     @CurrentUser() user: User,
     @Query('limit', new DefaultValuePipe(3), ParseIntPipe) limit: number,
+    @Query('language', new DefaultValuePipe('en'), new ParseEnumPipe({ en: 'en', zh: 'zh' })) language: 'en' | 'zh',
   ) {
-    return this.aiService.getInsights(user.id, limit);
+    return this.aiService.getInsights(user.id, limit, language);
   }
 
   // ── POST /ai/analyze-nutrition ─────────────────────────────────────────────
 
   @Post('analyze-nutrition')
   @ApiOperation({ summary: 'Estimate the nutritional content of a described meal' })
-  analyzeNutrition(@Body() dto: AnalyzeNutritionDto) {
+  async analyzeNutrition(@CurrentUser() user: User, @Body() dto: AnalyzeNutritionDto) {
+    await this.usage.consume(user.id);
     return this.aiService.analyzeNutrition(dto.description, dto.ingredients);
   }
 }

@@ -1,6 +1,6 @@
 {
   "name": "friyo",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "main": "expo-router/entry",
   "scripts": {
     "start": "expo start",
@@ -12,7 +12,8 @@
     "release:check": "node scripts-preflight.cjs",
     "eas-build-pre-install": "node scripts-preflight.cjs",
     "prepare:ios": "expo prebuild --platform ios --no-install",
-    "postinstall": "node scripts/patch-metro.cjs"
+    "postinstall": "node scripts/patch-metro.cjs",
+    "web:local": "node scripts/local-web-preview.cjs"
   },
   "dependencies": {
     "@expo-google-fonts/dm-sans": "^0.2.3",

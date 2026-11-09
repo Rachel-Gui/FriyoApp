@@ -1,7 +1,5 @@
-import {
-  Modal, ScrollView, StyleSheet, Text,
-  TouchableOpacity, View,
-} from 'react-native';
+import { LocalizedText as Text, LocalizedTouchableOpacity as TouchableOpacity } from '@/components/ui/LocalizedNative';
+import { Modal, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '@/constants/Colors';
 import { SFIcon } from '@/components/ui/SFIcon';
@@ -38,7 +36,7 @@ export function IngredientDetailSheet({ item, visible, onClose, onEdit, onDelete
             <View style={styles.emojiWrap}>
               <Text style={styles.emoji}>{item.emoji}</Text>
             </View>
-            <Text style={styles.name} numberOfLines={2}>{item.name}</Text>
+            <Text translate={false} style={styles.name} numberOfLines={2}>{item.name}</Text>
             <Text style={styles.category}>{item.category}</Text>
           </View>
 

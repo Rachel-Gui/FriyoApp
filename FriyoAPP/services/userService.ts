@@ -1,6 +1,12 @@
 import { del, get, patch } from './api';
 
 export interface UserProfile {
+  meal_formats: string[];
+  flavor_preferences: string[];
+  time_preference: string;
+  grocery_frequency: string;
+  dietary_restrictions: string[];
+  initial_craving: string;
   diet_type:            string;
   allergies:            string[];
   cooking_skill:        string;

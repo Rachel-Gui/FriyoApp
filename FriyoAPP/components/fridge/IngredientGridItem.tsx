@@ -1,4 +1,5 @@
-import { Dimensions, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { LocalizedText as Text, LocalizedTouchableOpacity as TouchableOpacity } from '@/components/ui/LocalizedNative';
+import { Dimensions, StyleSheet, View } from 'react-native';
 import { Colors } from '@/constants/Colors';
 import type { UiItem } from './types';
 import { freshnessColor } from './fridgeUtils';
@@ -22,7 +23,7 @@ export function IngredientGridItem({ item, onPress }: Props) {
         <Text style={styles.emoji}>{item.emoji}</Text>
         <View style={[styles.dot, { backgroundColor: color }]} />
       </View>
-      <Text style={styles.name} numberOfLines={2}>{item.name}</Text>
+      <Text translate={false} style={styles.name} numberOfLines={2}>{item.name}</Text>
       <Text style={styles.amount} numberOfLines={1}>{item.quantity} {item.unit}</Text>
     </TouchableOpacity>
   );

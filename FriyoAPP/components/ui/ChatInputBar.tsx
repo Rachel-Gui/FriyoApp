@@ -1,3 +1,4 @@
+import { LocalizedTextInput as TextInput, LocalizedTouchableOpacity as TouchableOpacity, LocalizedText as Text } from '@/components/ui/LocalizedNative';
 // ─────────────────────────────────────────────────────────────────────────────
 // components/ui/ChatInputBar.tsx
 //
@@ -6,10 +7,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useRef, useState } from 'react';
-import {
-  View, TextInput, TouchableOpacity, StyleSheet,
-  Animated, Platform, Text, Keyboard,
-} from 'react-native';
+import { View, StyleSheet, Animated, Platform, Keyboard } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SFIcon } from './SFIcon';

@@ -1,3 +1,4 @@
+import { LocalizedText as Text, LocalizedTouchableOpacity as TouchableOpacity } from '@/components/ui/LocalizedNative';
 // ─────────────────────────────────────────────────────────────────────────────
 // components/ui/ChatHistorySheet.tsx
 //
@@ -6,11 +7,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useEffect, useRef } from 'react';
-import {
-  View, Text, TouchableOpacity, ScrollView,
-  StyleSheet, Animated, Dimensions, Modal,
-  Platform,
-} from 'react-native';
+import { View, ScrollView, StyleSheet, Animated, Dimensions, Modal, Platform } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SFIcon } from './SFIcon';

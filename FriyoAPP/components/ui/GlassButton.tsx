@@ -1,3 +1,4 @@
+import { LocalizedTouchableOpacity as TouchableOpacity, LocalizedText as Text } from '@/components/ui/LocalizedNative';
 // ─────────────────────────────────────────────────────────────────────────────
 // components/ui/GlassButton.tsx
 //
@@ -6,10 +7,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useRef } from 'react';
-import {
-  Animated, TouchableOpacity, Text, View,
-  StyleSheet, StyleProp, ViewStyle, TextStyle,
-} from 'react-native';
+import { Animated, View, StyleSheet, StyleProp, ViewStyle, TextStyle } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { Platform } from 'react-native';
 import { SFIcon, SFIconName } from './SFIcon';
@@ -47,7 +45,7 @@ export function GlassButton({
   onPress,
   style,
   textStyle,
-  tint       = 'rgba(255,255,255,0.62)',
+  tint       = 'rgba(255,255,255,0.94)',
   accent     = false,
   disabled   = false,
 }: GlassButtonProps) {
@@ -62,13 +60,17 @@ export function GlassButton({
   return (
     <Animated.View style={[{ transform: [{ scale }] }, style]}>
       <TouchableOpacity
-        activeOpacity={1}
+        accessibilityRole="button"
+        accessibilityLabel={label ?? icon}
+        accessibilityState={{ disabled }}
+        disabled={disabled}
+        activeOpacity={0.8}
         onPress={disabled ? undefined : onPress}
         onPressIn={pressIn}
         onPressOut={pressOut}
         style={[
           s.shadow,
-          isCircular && { width: size, height: size, borderRadius: radius },
+          isCircular && { width: Math.max(44, size), height: Math.max(44, size), borderRadius: radius },
         ]}
       >
         <BlurView
@@ -77,7 +79,7 @@ export function GlassButton({
           style={[
             s.glass,
             { borderRadius: radius },
-            isCircular && { width: size, height: size },
+            isCircular && { width: Math.max(44, size), height: Math.max(44, size) },
             !isCircular && { paddingHorizontal: 18, height: size },
             Platform.OS === 'android' && { backgroundColor: 'rgba(255,255,255,0.88)' },
             disabled && { opacity: 0.45 },

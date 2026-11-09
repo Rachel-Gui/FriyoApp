@@ -82,6 +82,13 @@ export interface ScannedItem {
 
 // ── Recipe ────────────────────────────────────────────────────────────────────
 export interface Recipe {
+  titleZh?: string | null;
+  titleEn?: string | null;
+  descriptionZh?: string | null;
+  descriptionEn?: string | null;
+  sourceUrl?: string | null;
+  fridgeMatchRatio?: number;
+  missingIngredients?: { name: string }[];
   id:                 string;
   title:              string;
   description:        string;
@@ -101,6 +108,8 @@ export interface Recipe {
 }
 
 export interface RecipeIngredient {
+  ingredientNameZh?: string | null;
+  ingredientNameEn?: string | null;
   id:             string;
   ingredientName: string;
   quantity:       number;
@@ -110,6 +119,10 @@ export interface RecipeIngredient {
 }
 
 export interface RecipeStep {
+  descriptionZh?: string | null;
+  descriptionEn?: string | null;
+  tipsZh?: string | null;
+  tipsEn?: string | null;
   id:          string;
   stepNumber:  number;
   description: string;
@@ -139,10 +152,11 @@ export interface CookingTimeline {
 }
 
 export interface TimelineStep {
-  step:               RecipeStep;
+  step:               number;
+  description: string;
   startMin:           number;
   durationMin:        number;
-  whatToDoMeanwhile:  string | null;
+  whatToDoMeanwhile?: string | null;
 }
 
 export interface RecipeAdaptation {

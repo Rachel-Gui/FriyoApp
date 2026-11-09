@@ -17,7 +17,7 @@
 
 import React from 'react';
 import { StyleProp, ViewStyle } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 
 // ── SF Symbol → Ionicons mapping ─────────────────────────────────────────────
 // Keys are SF Symbol names used throughout the app.
@@ -123,6 +123,7 @@ export function SFIcon({
   opacity = 1,
   style,
 }: SFIconProps) {
+  if (name === 'refrigerator') return <MaterialCommunityIcons name={weight === 'fill' ? 'fridge' : 'fridge-outline'} size={size} color={color} style={[{ opacity }, style] as any} />;
   const entry = MAP[name];
   if (!entry) {
     // Fallback: render nothing — prevents crashes on unknown names

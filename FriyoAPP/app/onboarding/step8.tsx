@@ -1,5 +1,7 @@
+import { LocalizedText as Text, LocalizedTouchableOpacity as TouchableOpacity } from '@/components/ui/LocalizedNative';
 import { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { useOnboardingStore } from '@/store/onboardingStore';
+import { View, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors } from '@/constants/Colors';
@@ -11,7 +13,8 @@ const OPTIONS = [
 
 export default function Step8() {
   const router = useRouter();
-  const [selected, setSelected] = useState<string | null>(null);
+  const setGroceryFrequency = useOnboardingStore(s => s.setGroceryFrequency);
+  const [selected, setSelected] = useState<string | null>(useOnboardingStore.getState().groceryFrequency || null);
 
   return (
     <SafeAreaView style={s.container}>
@@ -34,7 +37,7 @@ export default function Step8() {
       <View style={s.footer}>
         <TouchableOpacity
           style={[s.btn, !!selected && s.btnActive]}
-          onPress={selected ? () => router.push('/onboarding/step9') : undefined}
+          onPress={selected ? () => { setGroceryFrequency(selected); router.push('/onboarding/step9'); } : undefined}
         >
           <Text style={[s.btnText, !!selected && s.btnTextActive]}>Choose at least one to next</Text>
         </TouchableOpacity>

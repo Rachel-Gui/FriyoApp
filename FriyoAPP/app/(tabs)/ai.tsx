@@ -1,9 +1,7 @@
+import { LocalizedText as Text, LocalizedTouchableOpacity as TouchableOpacity, LocalizedAlert as Alert } from '@/components/ui/LocalizedNative';
+import { useRouter } from 'expo-router';
 import React, { useRef, useState, useCallback, useEffect } from 'react';
-import {
-  View, Text, ScrollView, TouchableOpacity,
-  StyleSheet, Platform, Image, KeyboardAvoidingView,
-  Alert, Animated,
-} from 'react-native';
+import { View, ScrollView, StyleSheet, Platform, Image, KeyboardAvoidingView, Animated } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { SFIcon }           from '@/components/ui/SFIcon';
@@ -111,7 +109,7 @@ function MessageBubble({
     return (
       <View style={[s.bubbleRow, s.bubbleRowUser]}>
         <View style={[s.bubble, s.bubbleUser]}>
-          <Text style={[s.bubbleText, s.bubbleTextUser]}>{msg.text}</Text>
+          <Text translate={false} style={[s.bubbleText, s.bubbleTextUser]}>{msg.text}</Text>
         </View>
       </View>
     );
@@ -177,6 +175,7 @@ function QuickActionChips({ onSend }: { onSend: (query: string) => void }) {
 // ── Main screen ───────────────────────────────────────────────────────────────
 
 export default function AITab() {
+  const router = useRouter();
   const insets = useSafeAreaInsets();
 
   const [messages,     setMessages]    = useState<Message[]>([INITIAL_MESSAGE]);
@@ -240,16 +239,12 @@ export default function AITab() {
 
   // ── Start cooking navigation ──────────────────────────────────────────────
   const handleStartCooking = useCallback((recipe: AIRecipeSuggestion) => {
-    Alert.alert(
-      recipe.title,
-      [
-        `Time: ${recipe.cookingTime}`,
-        `Difficulty: ${recipe.difficulty}`,
-        '',
-        ...recipe.stepsPreview.map((step, index) => `${index + 1}. ${step}`),
-      ].join('\n'),
-    );
-  }, []);
+    if (/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(recipe.recipeId)) {
+      router.push({ pathname: '/(tabs)/recipe/[id]', params: { id: recipe.recipeId } });
+    } else {
+      Alert.alert('Recipe unavailable', 'Ask Friyo for a new recommendation from the recipe library.');
+    }
+  }, [router]);
 
   const SCROLL_BOTTOM_PAD = insets.bottom + 150;
 
@@ -277,7 +272,7 @@ export default function AITab() {
           iconColor="rgba(0,0,0,0.72)"
           iconWeight="fill"
           size={36}
-          onPress={() => Alert.alert('Friyo Pro', 'Unlimited AI chats, advanced nutrition analysis, and more.\n\nComing soon!')}
+          onPress={() => router.push('/(tabs)/settings' as any)}
           accent
           style={s.proBtn}
           textStyle={s.proBtnText}

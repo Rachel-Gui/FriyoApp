@@ -1,8 +1,8 @@
+import { LocalizedText as Text, LocalizedTouchableOpacity as TouchableOpacity } from '@/components/ui/LocalizedNative';
+import { useLanguageStore } from '@/store/languageStore';
+import { recipeText } from '@/services/recipeLanguage';
 import { Tabs, usePathname } from 'expo-router';
-import {
-  View, Text, StyleSheet, TouchableOpacity,
-  Platform, Animated, Dimensions,
-} from 'react-native';
+import { View, StyleSheet, Platform, Animated, Dimensions } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRef, useEffect, useCallback } from 'react';
@@ -63,6 +63,7 @@ function AiChatInput() {
 
 // ── Glass Tab Bar ─────────────────────────────────────────────────────────────
 function GlassTabBar({ state, navigation }: any) {
+  const language = useLanguageStore(state => state.language);
   const insets   = useSafeAreaInsets();
   const pathname = usePathname();
 
@@ -152,7 +153,7 @@ function GlassTabBar({ state, navigation }: any) {
                   color={focused ? Colors.black : 'rgba(0,0,0,0.35)'}
                   weight={focused ? 'fill' : 'regular'}
                 />
-                <Text style={[s.tabLabel, focused && s.tabLabelOn]}>{tab.label}</Text>
+                <Text style={[s.tabLabel, focused && s.tabLabelOn]}>{recipeText(tab.label, language)}</Text>
               </TouchableOpacity>
             );
           })}
@@ -197,7 +198,7 @@ function GlassTabBar({ state, navigation }: any) {
 // ── Root layout ───────────────────────────────────────────────────────────────
 export default function TabLayout() {
   return (
-    <Tabs tabBar={(props) => <GlassTabBar {...props} />} screenOptions={{ headerShown: false }}>
+    <Tabs backBehavior="history" tabBar={(props) => <GlassTabBar {...props} />} screenOptions={{ headerShown: false }}>
       <Tabs.Screen name="index" />
       <Tabs.Screen name="fridge/index" />
       <Tabs.Screen name="meals/index" />
@@ -208,6 +209,8 @@ export default function TabLayout() {
       <Tabs.Screen name="recipe/finish"  options={{ href: null }} />
       <Tabs.Screen name="fridge/scanner" options={{ href: null }} />
       <Tabs.Screen name="meals/month"    options={{ href: null }} />
+      <Tabs.Screen name="search" options={{ href: null }} />
+      <Tabs.Screen name="shopping-list" options={{ href: null }} />
       <Tabs.Screen name="settings"       options={{ href: null }} />
       <Tabs.Screen name="privacy"        options={{ href: null }} />
       <Tabs.Screen name="terms"          options={{ href: null }} />

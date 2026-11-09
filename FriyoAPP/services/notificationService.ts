@@ -8,7 +8,7 @@ import { del, post } from './api';
 const TOKEN_KEY = 'friyo_push_token';
 const OPT_IN_KEY = 'friyo_push_opt_in';
 let generation = 0;
-Notifications.setNotificationHandler({ handleNotification: async () => ({
+if (Platform.OS !== 'web') Notifications.setNotificationHandler({ handleNotification: async () => ({
   shouldPlaySound: true, shouldSetBadge: false, shouldShowBanner: true, shouldShowList: true,
 }) });
 
@@ -36,6 +36,6 @@ export const notificationService = {
     const token = await AsyncStorage.getItem(TOKEN_KEY);
     if (token) await del(`/notifications/device-token/${encodeURIComponent(token)}`);
     await AsyncStorage.multiRemove([TOKEN_KEY, OPT_IN_KEY]);
-    await Notifications.dismissAllNotificationsAsync();
+    if (Platform.OS !== 'web') await Notifications.dismissAllNotificationsAsync();
   },
 };

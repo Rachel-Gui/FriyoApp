@@ -1,5 +1,6 @@
+import { LocalizedText as Text, LocalizedTextInput as TextInput, LocalizedTouchableOpacity as TouchableOpacity, LocalizedAlert as Alert } from '@/components/ui/LocalizedNative';
 import { useState } from 'react';
-import { SafeAreaView, ScrollView, Text, TextInput, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
+import { SafeAreaView, ScrollView, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { authService } from '@/services/authService';
 import { Colors } from '@/constants/Colors';

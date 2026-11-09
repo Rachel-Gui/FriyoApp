@@ -17,6 +17,12 @@ export class RecipeIngredient {
   @Column({ name: 'ingredient_id', nullable: true, type: 'uuid' })
   ingredientId: string | null;
 
+  @Column({ name: 'display_name_zh', nullable: true, type: 'varchar' })
+  displayNameZh: string | null;
+
+  @Column({ name: 'display_name_en', nullable: true, type: 'varchar' })
+  displayNameEn: string | null;
+
   @Column({ name: 'display_name', nullable: true, type: 'varchar' })
   displayName: string | null;
 

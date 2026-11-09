@@ -1,13 +1,15 @@
-import {
-  View, Text, ScrollView, TouchableOpacity, Image,
-  StyleSheet, Dimensions, Animated, LayoutAnimation,
-  Platform, UIManager, ActivityIndicator,
-} from 'react-native';
-import { useRef, useState } from 'react';
+import { fridgeService } from '@/services/fridgeService';
+import { isSeasoning } from '@/services/seasonings';
+import { LocalizedText as Text, LocalizedTouchableOpacity as TouchableOpacity } from '@/components/ui/LocalizedNative';
+import { useLanguageStore } from '@/store/languageStore';
+import { localizeRecipe, recipeText, hasRecipeTranslation } from '@/services/recipeLanguage';
+import { View, ScrollView, Image, StyleSheet, Dimensions, Animated, LayoutAnimation, Platform, UIManager, ActivityIndicator, Alert } from 'react-native';
+import { useRef, useState, useCallback } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Colors }           from '@/constants/Colors';
 import { SFIcon }           from '@/components/ui/SFIcon';
 import { RecipeMetaChip }   from '@/components/ui/RecipeMetaChip';
@@ -59,6 +61,20 @@ function RecipeCard({
   showTimeBadge?: boolean;
   onPress: () => void;
 }) {
+  const queryClient = useQueryClient();
+  const { data: saved = [] } = useQuery({ queryKey: ['recipes', 'saved'], queryFn: recipeService.getSavedRecipes });
+  const isSaved = saved.some(item => item.id === recipe.id);
+  const [savePending, setSavePending] = useState(false);
+  const toggleSave = async () => {
+    if (savePending) return;
+    setSavePending(true);
+    try {
+      if (isSaved) await recipeService.unsaveRecipe(recipe.id);
+      else await recipeService.saveRecipe(recipe.id);
+      await queryClient.invalidateQueries({ queryKey: ['recipes', 'saved'] });
+    } catch { Alert.alert('Could not save recipe', 'Please try again.'); }
+    finally { setSavePending(false); }
+  };
   const scale = useRef(new Animated.Value(1)).current;
 
   const pressIn  = () => Animated.spring(scale, { toValue: 0.965, useNativeDriver: true, stiffness: 420, damping: 24, mass: 0.7 }).start();
@@ -67,7 +83,10 @@ function RecipeCard({
   const totalMin = (recipe.prepTimeMin ?? 0) + (recipe.cookTimeMin ?? 0);
   const timeLabel = totalMin > 0 ? `${totalMin} min` : '—';
   const imgSource = recipe.imageUrl ? { uri: recipe.imageUrl } : localImageForRecipe(recipe, imageIndex);
-  const displayTitle = recipe.title?.trim() || 'Recipe idea';
+  const language = useLanguageStore(state => state.language);
+  const t = (text: string) => recipeText(text, language);
+  const TODAY = new Date().toLocaleDateString(language === 'zh' ? 'zh-CN' : 'en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+  const displayTitle = localizeRecipe(recipe, language).title?.trim() || recipeText('Recipe', language);
 
   return (
     <Animated.View style={[s.card, { transform: [{ scale }] }]}>
@@ -78,33 +97,40 @@ function RecipeCard({
           <Text style={s.cardImageTitle} numberOfLines={2}>{displayTitle}</Text>
         </View>
 
+        {recipe.fridgeMatchRatio !== undefined && <View style={{ padding: 10, gap: 4 }}>
+          <Text style={{ color: Colors.black }}>{recipe.fridgeMatchRatio}% main ingredients available</Text>
+          {!!recipe.missingIngredients?.filter(item => !isSeasoning(item.name)).length && <Text style={{ color: Colors.gray }}>Missing: {recipe.missingIngredients.filter(item => !isSeasoning(item.name)).map(item => item.name).join(', ')}</Text>}
+          <Text style={{ color: Colors.gray }}>Confirm seasonings in recipe</Text>
+        </View>}
         {recipe.difficulty ? (
           <View style={[s.badge, { backgroundColor: Colors.green }]}>
-            <Text style={s.badgeText}>{recipe.difficulty.toUpperCase()}</Text>
+            <Text style={s.badgeText}>{t(recipe.difficulty).toUpperCase()}</Text>
           </View>
         ) : null}
 
         {showTimeBadge && totalMin > 0 ? (
           <View style={s.timeBadge}>
             <SFIcon name="timer" size={12} color={Colors.black} />
-            <Text style={s.timeBadgeText}>{timeLabel}</Text>
+            <Text style={s.timeBadgeText}>{timeLabel.replace('min', t('min'))}</Text>
           </View>
         ) : null}
 
-        <View style={s.bookmarkBtn}>
-          <SFIcon name="bookmark" size={14} color="rgba(0,0,0,0.65)" />
-        </View>
 
         <View style={s.cardBody}>
           <Text style={s.cardName} numberOfLines={2}>{displayTitle}</Text>
+          {!hasRecipeTranslation(recipe, language) && <Text style={{ fontSize: 11, color: Colors.gray }}>{t('Original text (translation unavailable)')}</Text>}
           <View style={s.cardMeta}>
-            <RecipeMetaChip icon="timer" label={timeLabel} iconColor="rgba(0,0,0,0.45)" />
-            {recipe.mealType ? <RecipeMetaChip label={recipe.mealType} /> : null}
+            <RecipeMetaChip icon="timer" label={timeLabel.replace('min', t('min'))} iconColor="rgba(0,0,0,0.45)" />
+            {recipe.mealType ? <RecipeMetaChip label={t(recipe.mealType)} /> : null}
             {recipe.caloriesPerServing ? (
               <RecipeMetaChip icon="flame.fill" iconWeight="fill" label={`${recipe.caloriesPerServing} kcal`} iconColor="#F59E0B" />
             ) : null}
           </View>
         </View>
+      </TouchableOpacity>
+      <TouchableOpacity style={s.bookmarkBtn} onPress={toggleSave} disabled={savePending}
+        accessibilityRole="button" accessibilityLabel={isSaved ? 'Unsave recipe' : 'Save recipe'} accessibilityState={{ busy: savePending, selected: isSaved }}>
+        <SFIcon name="bookmark" size={18} weight={isSaved ? 'fill' : 'regular'} color={Colors.black} />
       </TouchableOpacity>
     </Animated.View>
   );
@@ -115,6 +141,9 @@ function RecipeCarousel({ recipes, title, subtitle, loading, imageOffset = 0 }: 
   recipes: Recipe[]; title: string; subtitle?: string; loading?: boolean; imageOffset?: number;
 }) {
   const router = useRouter();
+  const language = useLanguageStore(state => state.language);
+  const t = (text: string) => recipeText(text, language);
+  const TODAY = new Date().toLocaleDateString(language === 'zh' ? 'zh-CN' : 'en-US', { weekday: 'long', month: 'long', day: 'numeric' });
 
   if (loading) {
     return (
@@ -134,9 +163,9 @@ function RecipeCarousel({ recipes, title, subtitle, loading, imageOffset = 0 }: 
           </View>
         </View>
         <View style={{ marginHorizontal: 20, padding: 18, borderRadius: 16, backgroundColor: Colors.white }}>
-          <Text style={{ fontFamily: 'DMSans_500Medium', color: Colors.black }}>No recipes available yet</Text>
+          <Text style={{ fontFamily: 'DMSans_500Medium', color: Colors.black }}>{t('No recipes available yet')}</Text>
           <Text style={{ fontFamily: 'DMSans_400Regular', color: Colors.gray, marginTop: 4 }}>
-            Add ingredients to your fridge or try again when you are online.
+            {t('Add ingredients to your fridge or try again when you are online.')}
           </Text>
         </View>
       </View>
@@ -150,8 +179,8 @@ function RecipeCarousel({ recipes, title, subtitle, loading, imageOffset = 0 }: 
           <Text style={s.sectionTitle}>{title}</Text>
           {subtitle && <Text style={s.sectionSubtitle}>{subtitle}</Text>}
         </View>
-        <TouchableOpacity onPress={() => router.push('/(tabs)/ai' as any)}>
-          <Text style={s.seeAll}>See All</Text>
+        <TouchableOpacity onPress={() => router.push('/(tabs)/search' as any)}>
+          <Text style={s.seeAll}>{t('See All')}</Text>
         </TouchableOpacity>
       </View>
 
@@ -179,74 +208,6 @@ function RecipeCarousel({ recipes, title, subtitle, loading, imageOffset = 0 }: 
   );
 }
 
-// ── Smart Inventory Banner (dismissable) ──────────────────────────────────────
-function SmartInventoryBanner({ onDismiss }: { onDismiss: () => void }) {
-  const router   = useRouter();
-  const opacity  = useRef(new Animated.Value(1)).current;
-  const scale    = useRef(new Animated.Value(1)).current;
-
-  const xScale   = useRef(new Animated.Value(1)).current;
-  const xPressIn  = () => Animated.spring(xScale, { toValue: 0.88, useNativeDriver: true, stiffness: 500, damping: 20 }).start();
-  const xPressOut = () => Animated.spring(xScale, { toValue: 1,    useNativeDriver: true, stiffness: 300, damping: 22 }).start();
-
-  const dismiss = () => {
-    // Phase 1: fade + scale out
-    Animated.parallel([
-      Animated.timing(opacity, { toValue: 0, duration: 200, useNativeDriver: true }),
-      Animated.spring(scale, {
-        toValue: 0.93,
-        useNativeDriver: true,
-        stiffness: 380,
-        damping: 24,
-      }),
-    ]).start(() => {
-      // Phase 2: collapse height + reflow with LayoutAnimation
-      LayoutAnimation.configureNext({
-        duration: 260,
-        create: { type: 'easeInEaseOut', property: 'opacity' },
-        update: { type: 'spring', springDamping: 0.7 },
-        delete: { type: 'easeInEaseOut', property: 'opacity' },
-      });
-      onDismiss();
-    });
-  };
-
-  return (
-    <Animated.View style={[s.banner, { opacity, transform: [{ scale }] }]}>
-      {/* Dismiss X */}
-      <Animated.View style={[s.bannerXWrap, { transform: [{ scale: xScale }] }]}>
-        <TouchableOpacity
-          onPressIn={xPressIn}
-          onPressOut={xPressOut}
-          onPress={dismiss}
-          activeOpacity={1}
-          hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
-        >
-          <View style={s.bannerX}>
-            <Text style={s.bannerXIcon}>✕</Text>
-          </View>
-        </TouchableOpacity>
-      </Animated.View>
-
-      <View style={s.bannerTagRow}>
-        <SFIcon name="shippingbox" size={14} color={Colors.black} />
-        <Text style={s.bannerTag}>Smart Inventory</Text>
-      </View>
-      <Text style={s.bannerTitle}>Record New Ingredients</Text>
-      <Text style={s.bannerSub}>
-        Based on your last scan, you can make 8 new recipes right now.
-      </Text>
-      <TouchableOpacity
-        style={s.updateBtn}
-        onPress={() => router.push('/(tabs)/fridge/scanner' as any)}
-      >
-        <SFIcon name="camera" size={16} color={Colors.white} />
-        <Text style={s.updateBtnText}>Update Fridge</Text>
-      </TouchableOpacity>
-    </Animated.View>
-  );
-}
-
 // ── Greeting helpers ──────────────────────────────────────────────────────────
 function timeGreeting(): string {
   const h = new Date().getHours();
@@ -255,35 +216,33 @@ function timeGreeting(): string {
   return 'Evening';
 }
 
-const TODAY = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+
 
 // ── Main screen ───────────────────────────────────────────────────────────────
 export default function RecipeHome() {
+  const language = useLanguageStore(state => state.language);
+  const t = (text: string) => recipeText(text, language);
+  const TODAY = new Date().toLocaleDateString(language === 'zh' ? 'zh-CN' : 'en-US', { weekday: 'long', month: 'long', day: 'numeric' });
   const router  = useRouter();
   const insets  = useSafeAreaInsets();
   const user    = useAuthStore(s => s.user);
-  const [showBanner, setShowBanner] = useState(true);
 
-  const { data: fridgeRecs, isLoading: loadingFridge } = useQuery({
-    queryKey: ['recipes', 'fridge'],
+
+  const { data: inventory, isError: inventoryError } = useQuery({ queryKey: ['fridge'], queryFn: () => fridgeService.getItems(), retry: false });
+  const { data: fridgeRecs, isLoading: loadingFridge, refetch: refreshFridge } = useQuery({
+    queryKey: ['recipes', 'fridge', user?.id],
     queryFn:  recipeService.getRecommendationsByFridge,
     retry: false,
   });
 
-  const { data: trending, isLoading: loadingTrending } = useQuery({
-    queryKey: ['recipes', 'trending'],
-    queryFn:  recipeService.getTrendingRecipes,
-    retry: false,
+  const { data: preferences, isLoading: loadingProfile, refetch: refreshProfile } = useQuery({
+    queryKey: ['recipes', 'profile', user?.id], queryFn: recipeService.getProfileRecommendations, retry: false,
   });
-
-  const fridgeRecipes   = fridgeRecs ?? [];
-  const trendingRecipes = trending ?? [];
-  const topTrendRecipes = trendingRecipes;
-  const recommendedRecipes = fridgeRecipes;
-  const quickMealRecipes = fridgeRecipes
-    .filter(recipe => ((recipe.prepTimeMin ?? 0) + (recipe.cookTimeMin ?? 0)) <= 25)
-    .concat(fridgeRecipes)
-    .filter((recipe, index, list) => list.findIndex(item => item.id === recipe.id) === index);
+  const { data: saved, isLoading: loadingSaved, refetch: refreshSaved } = useQuery({
+    queryKey: ['recipes', 'saved'], queryFn: recipeService.getSavedRecipes, retry: false,
+  });
+  useFocusEffect(useCallback(() => { void refreshSaved(); void refreshFridge(); void refreshProfile(); }, [refreshSaved, refreshFridge, refreshProfile]));
+  const fridgeRecipes = fridgeRecs ?? [];
 
   const firstName = user?.name?.split(' ')[0] ?? 'Chef';
   const displayName = user?.name?.trim() || 'Chef';
@@ -301,7 +260,7 @@ export default function RecipeHome() {
         {/* Header */}
         <View style={s.header}>
           <View>
-            <Text style={s.greeting}>{timeGreeting()} {firstName}</Text>
+            <Text style={s.greeting}>{language === 'zh' ? ({ Morning: '早上好', Afternoon: '下午好', Evening: '晚上好' }[timeGreeting()] || '你好') : timeGreeting()} <Text translate={false}>{firstName}</Text></Text>
             <Text style={s.date}>{TODAY}</Text>
           </View>
           <TouchableOpacity
@@ -314,46 +273,34 @@ export default function RecipeHome() {
           </TouchableOpacity>
         </View>
 
+        <TouchableOpacity onPress={() => router.push('/(tabs)/shopping-list' as any)}
+          accessibilityRole="button" accessibilityLabel="Open shopping list"
+          style={{ marginHorizontal: 20, marginBottom: 14, padding: 16, borderRadius: 18, backgroundColor: Colors.yellowLight, flexDirection: 'row', gap: 10 }}>
+          <SFIcon name="cart" size={20} color={Colors.black} /><Text>Shopping List</Text>
+        </TouchableOpacity>
+
         {/* Search → AI */}
         <TouchableOpacity
           style={s.searchBar}
           activeOpacity={0.82}
-          onPress={() => router.push('/(tabs)/ai' as any)}
+          onPress={() => router.push('/(tabs)/search' as any)}
         >
           <SFIcon name="magnifyingglass" size={15} color="rgba(0,0,0,0.38)" />
-          <Text style={s.searchPlaceholder}>Ask AI for a recipe…</Text>
+          <Text style={s.searchPlaceholder}>{t('Search recipes…')}</Text>
           <View style={s.searchAIBadge}>
-            <Text style={s.searchAIText}>✦ AI</Text>
+            <Text style={s.searchAIText}>{t('Search')}</Text>
           </View>
         </TouchableOpacity>
 
-        {/* Smart Inventory Banner — conditionally shown */}
-        {showBanner && (
-          <SmartInventoryBanner onDismiss={() => setShowBanner(false)} />
-        )}
+        {!inventoryError && inventory?.length === 0 ? (
+          <View style={{ marginHorizontal: 20, marginBottom: 24, padding: 20, borderRadius: 20, backgroundColor: Colors.white }}>
+            <Text style={s.sectionTitle}>0 ingredients in your fridge</Text>
+            <Text style={s.sectionSubtitle}>Explore recipes for your taste below. Add ingredients in the Fridge tab to unlock fridge matches.</Text>
 
-        {/* Recipe carousels */}
-        <RecipeCarousel
-          recipes={topTrendRecipes}
-          title="Top Trend"
-          subtitle="Popular right now"
-          loading={loadingTrending}
-          imageOffset={6}
-        />
-        <RecipeCarousel
-          recipes={recommendedRecipes}
-          title="Recommended for You"
-          subtitle="Matches your taste profile"
-          loading={loadingTrending}
-          imageOffset={3}
-        />
-        <RecipeCarousel
-          recipes={quickMealRecipes}
-          title="For Quick Meal"
-          subtitle="Fast recipes with estimated cook time"
-          loading={loadingFridge}
-          imageOffset={0}
-        />
+          </View>
+        ) : <RecipeCarousel recipes={fridgeRecipes} title={t('From Your Fridge')} subtitle={t('Matched to your main ingredients · check seasonings separately')} loading={loadingFridge} imageOffset={0} />}
+        <RecipeCarousel recipes={preferences ?? []} title={t('For Your Taste')} subtitle={t('Inspired by your cooking preferences')} loading={loadingProfile} imageOffset={3} />
+        <RecipeCarousel recipes={saved ?? []} title={t('Saved Recipes')} subtitle={t('Your favorites, ready to cook')} loading={loadingSaved} imageOffset={6} />
       </ScrollView>
     </SafeAreaView>
   );

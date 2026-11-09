@@ -2,12 +2,12 @@
   "expo": {
     "name": "Friyo",
     "slug": "new-expo-name",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/images/app-icon.png",
     "userInterfaceStyle": "light",
     "splash": {
-      "image": "./assets/images/mascot.png",
+      "image": "./assets/images/login-mascot.png",
       "resizeMode": "contain",
       "backgroundColor": "#F5F0E8"
     },
@@ -26,7 +26,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/mascot.png",
+        "foregroundImage": "./assets/images/login-mascot.png",
         "backgroundColor": "#F5F0E8"
       },
       "package": "com.friyo.app",
@@ -42,7 +42,7 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/mascot.png",
+          "image": "./assets/images/login-mascot.png",
           "imageWidth": 200,
           "resizeMode": "contain",
           "backgroundColor": "#F5F0E8"

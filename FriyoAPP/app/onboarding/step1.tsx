@@ -1,5 +1,7 @@
+import { useLanguageStore } from '@/store/languageStore';
+import { LocalizedText as Text } from '@/components/ui/LocalizedNative';
 import { useState } from 'react';
-import { Text } from 'react-native';
+
 import { useRouter } from 'expo-router';
 import OnboardingLayout from '@/components/onboarding/OnboardingLayout';
 import OnboardingChip from '@/components/onboarding/OnboardingChip';
@@ -26,9 +28,10 @@ const MEAL_FORMATS = [
 ];
 
 export default function Step1() {
+  const language = useLanguageStore(state => state.language);
   const router = useRouter();
   const setMealFormats = useOnboardingStore(s => s.setMealFormats);
-  const [selected, setSelected] = useState<string[]>([]);
+  const [selected, setSelected] = useState<string[]>(useOnboardingStore.getState().mealFormats);
 
   const toggle = (label: string) =>
     setSelected((p) => p.includes(label) ? p.filter((x) => x !== label) : [...p, label]);
@@ -43,7 +46,7 @@ export default function Step1() {
 
   return (
     <OnboardingLayout
-      title={title}
+      title={language === 'zh' ? <Text style={{ fontSize: 30, fontFamily: 'DMSans_700Bold', lineHeight: 38 }}>你喜欢哪类餐食？</Text> : title}
       subtitle="Choose what you like"
       onNext={() => { setMealFormats(selected); router.push('/onboarding/step2'); }}
       canProceed={selected.length > 0}

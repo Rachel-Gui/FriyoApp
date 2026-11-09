@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { AppState } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { useRouter } from 'expo-router';
 import { useAuthStore } from '@/store/authStore';
@@ -10,7 +10,7 @@ export function PushLifecycle() {
   const userId = useAuthStore(s => s.user?.id);
   const ready = useAuthStore(s => s.isLoggedIn && s.onboardingComplete);
   useEffect(() => {
-    if (!userId || !ready) return;
+    if (Platform.OS === 'web' || !userId || !ready) return;
     const register = () => { void notificationService.register().catch(() => {}); };
     register();
     const app = AppState.addEventListener('change', state => { if (state === 'active') register(); });

@@ -1,8 +1,6 @@
+import { LocalizedText as Text, LocalizedTouchableOpacity as TouchableOpacity } from '@/components/ui/LocalizedNative';
 import { useRef } from 'react';
-import {
-  Animated, PanResponder, StyleSheet, Text,
-  TouchableOpacity, View,
-} from 'react-native';
+import { Animated, PanResponder, StyleSheet, View } from 'react-native';
 import { Colors } from '@/constants/Colors';
 import { SFIcon } from '@/components/ui/SFIcon';
 import type { UiItem } from './types';
@@ -59,7 +57,7 @@ export function SwipeableIngredientCard({ item, onPress, onEdit, onDelete }: Pro
             <Text style={styles.emoji}>{item.emoji}</Text>
           </View>
           <View style={styles.info}>
-            <Text style={styles.name} numberOfLines={1}>{item.name}</Text>
+            <Text translate={false} style={styles.name} numberOfLines={1}>{item.name}</Text>
             <Text style={[styles.freshText, { color }]}>{freshnessText(item)}</Text>
           </View>
           <View style={styles.right}>

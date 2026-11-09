@@ -6,6 +6,7 @@ import { get, post, postForm } from './api';
 import type { DayPlan, WeekPlan, MealLog, MealPlanAnalysis, MonthMealHistory } from './types';
 
 interface LogMealData {
+  clientRequestId?: string;
   recipeId:      string;
   mealType:      'breakfast' | 'lunch' | 'dinner' | 'snack';
   servingsEaten: number;
@@ -72,6 +73,7 @@ export const mealPlanService = {
    */
   async logMeal(data: LogMealData): Promise<MealLog> {
     return post<MealLog>('/meal-plans/log', {
+      client_request_id: data.clientRequestId,
       recipe_id:       data.recipeId,
       meal_type:       data.mealType,
       servings_eaten:  data.servingsEaten,

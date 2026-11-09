@@ -17,7 +17,7 @@ export default function PrivacyPolicyScreen() {
         },
         {
           title: 'AI providers',
-          body: 'When you choose AI chat or fridge scanning, the content needed to complete your request may be sent to Google Gemini or OpenAI for processing. This can include your prompt, a submitted fridge image, relevant inventory, and dietary preferences. Friyo requests your permission before first use. Avoid including unnecessary sensitive personal information.',
+          body: 'When you choose AI chat or fridge scanning, the content needed to complete your request may be sent to Google Gemini or OpenAI for processing. This can include your prompt, a submitted fridge image, relevant inventory, shopping list items, and dietary preferences. Friyo requests your permission before first use. Avoid including unnecessary sensitive personal information.',
         },
         {
           title: 'Service providers',

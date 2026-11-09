@@ -10,7 +10,7 @@
 //   • Typed with generics; FriyoError carries HTTP status
 // ─────────────────────────────────────────────────────────────────────────────
 
-import * as SecureStore from 'expo-secure-store';
+import { tokenStorage } from './tokenStorage';
 
 // ── Config ────────────────────────────────────────────────────────────────────
 // Production API URL is injected by EAS; release preflight rejects missing configuration.
@@ -28,15 +28,15 @@ export const TOKEN_KEYS = {
 
 // ── Token store ───────────────────────────────────────────────────────────────
 export const tokenStore = {
-  getAccess:    ()           => SecureStore.getItemAsync(TOKEN_KEYS.access),
-  getRefresh:   ()           => SecureStore.getItemAsync(TOKEN_KEYS.refresh),
-  setAccess:    (t: string)  => SecureStore.setItemAsync(TOKEN_KEYS.access,  t),
-  setRefresh:   (t: string)  => SecureStore.setItemAsync(TOKEN_KEYS.refresh, t),
-  clearAccess:  ()           => SecureStore.deleteItemAsync(TOKEN_KEYS.access),
-  clearRefresh: ()           => SecureStore.deleteItemAsync(TOKEN_KEYS.refresh),
+  getAccess:    ()           => tokenStorage.getItemAsync(TOKEN_KEYS.access),
+  getRefresh:   ()           => tokenStorage.getItemAsync(TOKEN_KEYS.refresh),
+  setAccess:    (t: string)  => tokenStorage.setItemAsync(TOKEN_KEYS.access,  t),
+  setRefresh:   (t: string)  => tokenStorage.setItemAsync(TOKEN_KEYS.refresh, t),
+  clearAccess:  ()           => tokenStorage.deleteItemAsync(TOKEN_KEYS.access),
+  clearRefresh: ()           => tokenStorage.deleteItemAsync(TOKEN_KEYS.refresh),
   clearAll:     async ()     => {
-    await SecureStore.deleteItemAsync(TOKEN_KEYS.access);
-    await SecureStore.deleteItemAsync(TOKEN_KEYS.refresh);
+    await tokenStorage.deleteItemAsync(TOKEN_KEYS.access);
+    await tokenStorage.deleteItemAsync(TOKEN_KEYS.refresh);
   },
 };
 

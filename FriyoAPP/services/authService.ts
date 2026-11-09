@@ -2,7 +2,6 @@
 // services/authService.ts
 // ─────────────────────────────────────────────────────────────────────────────
 
-import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as WebBrowser from 'expo-web-browser';
 import { notificationService } from './notificationService';
@@ -108,8 +107,8 @@ export const authService = {
   /** Fast check — returns true if access token exists in SecureStore. */
   async isLoggedIn(): Promise<boolean> {
     const [accessToken, refreshToken] = await Promise.all([
-      SecureStore.getItemAsync('friyo_access_token'),
-      SecureStore.getItemAsync('friyo_refresh_token'),
+      tokenStore.getAccess(),
+      tokenStore.getRefresh(),
     ]);
     return Boolean(accessToken?.length && refreshToken?.length);
   },

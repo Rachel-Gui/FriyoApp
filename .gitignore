@@ -20,3 +20,4 @@ coverage/
 Pods/
 DerivedData/
 .gradle/
+.private-backups/

@@ -1,8 +1,27 @@
-import { IsOptional, IsString, IsArray, IsInt, IsEnum, Min, Max } from 'class-validator';
+import { IsOptional, IsString, IsArray, IsInt, IsEnum, Min, Max, IsBoolean, MaxLength, ArrayMaxSize } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { DietType, CookingSkill } from '../../../database/entities/user-profile.entity';
 
 export class UpdateProfileDto {
+  @IsOptional() @IsArray() @ArrayMaxSize(30) @IsString({ each: true }) @MaxLength(100, { each: true })
+  meal_formats?: string[];
+
+  @IsOptional() @IsArray() @ArrayMaxSize(30) @IsString({ each: true }) @MaxLength(100, { each: true })
+  flavor_preferences?: string[];
+
+  @IsOptional() @IsArray() @ArrayMaxSize(30) @IsString({ each: true }) @MaxLength(100, { each: true })
+  dietary_restrictions?: string[];
+
+  @IsOptional() @IsString() @MaxLength(100)
+  time_preference?: string;
+
+  @IsOptional() @IsString() @MaxLength(100)
+  grocery_frequency?: string;
+
+  @IsOptional() @IsString() @MaxLength(1000)
+  initial_craving?: string;
+
+
   @ApiPropertyOptional() @IsOptional() @IsEnum(DietType)
   diet_type?: DietType;
 
@@ -30,6 +49,6 @@ export class UpdateProfileDto {
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(1) @Max(7)
   weekly_cooking_days?: number;
 
-  @ApiPropertyOptional() @IsOptional()
+  @ApiPropertyOptional() @IsOptional() @IsBoolean()
   onboarding_completed?: boolean;
 }

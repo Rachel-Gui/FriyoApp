@@ -1,7 +1,8 @@
-import { Alert } from 'react-native';
+import { LocalizedAlert as Alert } from '@/components/ui/LocalizedNative';
+
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const AI_CONSENT_KEY = 'friyo_ai_data_consent_v1';
+const AI_CONSENT_KEY = 'friyo_ai_data_consent_v2';
 
 export const aiConsentService = {
   async hasConsent(): Promise<boolean> {
@@ -14,7 +15,7 @@ export const aiConsentService = {
     return new Promise(resolve => {
       Alert.alert(
         'AI data processing',
-        'To provide AI chat and fridge scanning, Friyo sends the text, image, fridge items, and dietary preferences needed for your request to Google Gemini or OpenAI. Do not submit sensitive personal information. You can review the Privacy Policy in Settings.',
+        'To provide AI chat and fridge scanning, Friyo sends the text, image, fridge items and shopping list, and dietary preferences needed for your request to Google Gemini or OpenAI. Do not submit sensitive personal information. You can review the Privacy Policy in Settings.',
         [
           { text: 'Not now', style: 'cancel', onPress: () => resolve(false) },
           {

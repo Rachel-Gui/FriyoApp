@@ -1,3 +1,6 @@
+import { preferenceScore, expiryPriority } from './preference-scoring';
+import { isSeasoning } from './seasonings';
+import { matchingFridgeItems } from './ingredient-matching';
 import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, MoreThanOrEqual } from 'typeorm';
@@ -68,8 +71,8 @@ export class RecipeRecommendationService {
       .leftJoinAndSelect('r.ingredients', 'ri')
       .leftJoinAndSelect('ri.ingredient', 'ing')
       .where("r.reviewStatus = :status", { status: RecipeReviewStatus.APPROVED })
+      .andWhere('r.isPublished = true')
       .orderBy('r.likesCount', 'DESC')
-      .take(200)
       .getMany();
 
     const results: MatchedRecipe[] = [];
@@ -78,11 +81,21 @@ export class RecipeRecommendationService {
       if (!this.passesFilters(recipe, profile)) continue;
 
       const scored = this.computeMatchScore(recipe, fridgeMap, profile);
-      results.push(scored);
+      if (scored.fridge_match_ratio > 0) results.push(scored);
     }
 
-    results.sort((a, b) => b.final_score - a.final_score);
+    results.sort((a, b) => b.fridge_match_ratio - a.fridge_match_ratio || b.final_score - a.final_score || a.recipe.id.localeCompare(b.recipe.id));
     return results.slice(0, 20);
+  }
+
+  async getProfileRecommendations(userId: string): Promise<Recipe[]> {
+    const profile = await this.profileRepo.findOne({ where: { userId } });
+    const recipes = await this.recipeRepo.createQueryBuilder('r')
+      .leftJoinAndSelect('r.ingredients', 'ri').leftJoinAndSelect('ri.ingredient', 'ing')
+      .where('r.reviewStatus = :status', { status: RecipeReviewStatus.APPROVED })
+      .andWhere('r.isPublished = true').orderBy('r.likesCount', 'DESC').getMany();
+    return recipes.filter(recipe => this.passesFilters(recipe, profile))
+      .sort((a, b) => preferenceScore(b, profile) - preferenceScore(a, profile) || b.likesCount - a.likesCount || a.id.localeCompare(b.id)).slice(0, 20);
   }
 
   // ── 2. Time-based recommendations ─────────────────────────────────────────
@@ -113,7 +126,8 @@ export class RecipeRecommendationService {
       .createQueryBuilder('r')
       .leftJoinAndSelect('r.ingredients', 'ri')
       .leftJoinAndSelect('ri.ingredient', 'ing')
-      .where("r.reviewStatus = :status", { status: RecipeReviewStatus.APPROVED });
+      .where("r.reviewStatus = :status", { status: RecipeReviewStatus.APPROVED })
+      .andWhere('r.isPublished = true');
 
     if (mealType) {
       qb.andWhere('r.mealType = :mealType', { mealType });
@@ -128,7 +142,7 @@ export class RecipeRecommendationService {
       .filter((r) => this.passesFilters(r, profile))
       .map((r) => this.computeMatchScore(r, fridgeMap, profile));
 
-    scored.sort((a, b) => b.final_score - a.final_score);
+    scored.sort((a, b) => b.final_score - a.final_score || a.recipe.id.localeCompare(b.recipe.id));
     return scored.slice(0, 4);
   }
 
@@ -202,7 +216,7 @@ export class RecipeRecommendationService {
     let missingCount = 0;
     const requiredCount = recipe.ingredients.filter((ri) => !ri.isOptional).length;
 
-    for (const ri of recipe.ingredients) {
+    for (const ri of recipe.ingredients ?? []) {
       const inFridge = ri.ingredientId
         ? (fridgeMap.get(ri.ingredientId) ?? []).length > 0
         : false;
@@ -294,7 +308,7 @@ export class RecipeRecommendationService {
 
     // Reorder adapted steps to use expiring items first (bubble high-freshness first steps forward)
     // We prioritise steps that use ingredients with low freshness scores (expiring soon)
-    adaptedSteps = this.prioritiseExpiringSteps(adaptedSteps, fridgeItems);
+    // Keep authored cooking step order; expiry must not move cooking before preparation.
 
     const adaptation = this.adaptationRepo.create({
       originalRecipeId: recipeId,
@@ -319,16 +333,17 @@ export class RecipeRecommendationService {
       .leftJoinAndSelect('fi.ingredient', 'ing')
       .where('fi.userId = :userId', { userId })
       .andWhere('(fi.expiryDate IS NULL OR fi.expiryDate >= :today)', { today })
+      .andWhere('fi.quantity > 0')
       .getMany();
   }
 
   private buildFridgeMap(items: FridgeItem[]): Map<string, FridgeItem[]> {
     const map = new Map<string, FridgeItem[]>();
     for (const item of items) {
-      if (!item.ingredientId) continue;
-      const existing = map.get(item.ingredientId) ?? [];
+      
+      const existing = map.get(item.ingredientId ?? item.id) ?? [];
       existing.push(item);
-      map.set(item.ingredientId, existing);
+      map.set(item.ingredientId ?? item.id, existing);
     }
     return map;
   }
@@ -338,8 +353,8 @@ export class RecipeRecommendationService {
 
     // Diet type compatibility
     if (
-      profile.dietType &&
-      recipe.dietTypes.length > 0 &&
+      profile.dietType && profile.dietType !== 'omnivore' &&
+      (recipe.dietTypes ?? []).length > 0 &&
       !recipe.dietTypes.includes(profile.dietType)
     ) {
       return false;
@@ -352,14 +367,14 @@ export class RecipeRecommendationService {
     ].map((s) => s.toLowerCase()));
 
     if (excluded.size > 0) {
-      for (const ri of recipe.ingredients) {
+      for (const ri of recipe.ingredients ?? []) {
         const name = (ri.displayName ?? ri.ingredient?.name ?? '').toLowerCase();
         if (name && excluded.has(name)) return false;
       }
     }
 
     // Tool availability (only if profile has tools listed)
-    if (profile.cookingTools.length > 0 && recipe.requiredTools.length > 0) {
+    if ((profile.cookingTools ?? []).length > 0 && (recipe.requiredTools ?? []).length > 0) {
       const userTools = new Set(profile.cookingTools.map((t) => t.toLowerCase()));
       for (const tool of recipe.requiredTools) {
         if (!userTools.has(tool.toLowerCase())) return false;
@@ -377,20 +392,18 @@ export class RecipeRecommendationService {
     const requiredIngredients = recipe.ingredients.filter((ri) => !ri.isOptional);
     const available: IngredientAvailability[] = [];
     const missing: MissingIngredient[] = [];
-    let freshnessSum = 0;
 
     for (const ri of requiredIngredients) {
-      const items = ri.ingredientId ? (fridgeMap.get(ri.ingredientId) ?? []) : [];
+      const items = matchingFridgeItems(ri, [...new Set([...fridgeMap.values()].flat())]);
       const name = ri.displayName ?? ri.ingredient?.name ?? 'Unknown';
 
       if (items.length > 0) {
         const totalQty = items.reduce((s, f) => s + Number(f.quantity), 0);
         // Use earliest-expiring item for freshness
         const earliestExpiry = items.reduce((a, b) =>
-          (a.expiryDate?.getTime() ?? Infinity) < (b.expiryDate?.getTime() ?? Infinity) ? a : b,
+          (a.expiryDate ? new Date(a.expiryDate).getTime() : Infinity) < (b.expiryDate ? new Date(b.expiryDate).getTime() : Infinity) ? a : b,
         );
         const fs = this.computeFreshnessScore(earliestExpiry.expiryDate);
-        freshnessSum += fs;
         available.push({
           ingredient_id: ri.ingredientId,
           name,
@@ -408,9 +421,13 @@ export class RecipeRecommendationService {
       }
     }
 
-    const total = requiredIngredients.length;
-    const fridgeMatchRatio = total > 0 ? (available.length / total) * 100 : 100;
-    const freshnessBonus = available.length > 0 ? freshnessSum / available.length : 0;
+    const mainIngredients = requiredIngredients.filter(line => line.ingredient?.category !== 'condiment' && !isSeasoning(line.displayNameEn ?? line.ingredient?.name ?? line.displayName ?? ''));
+    const allFridgeItems = [...new Set([...fridgeMap.values()].flat())];
+    const total = mainIngredients.length;
+    const matchedMain = mainIngredients.filter(line => matchingFridgeItems(line, allFridgeItems).length > 0);
+    const fridgeMatchRatio = total > 0 ? (matchedMain.length / total) * 100 : 0;
+    const freshnessBonus = matchedMain.length > 0 ? matchedMain.reduce((sum, line) =>
+      sum + Math.max(...matchingFridgeItems(line, allFridgeItems).map(item => expiryPriority(item.expiryDate))), 0) / matchedMain.length : 0;
 
     const cuisineBonus =
       profile?.preferredCuisines?.some(
@@ -422,7 +439,7 @@ export class RecipeRecommendationService {
     const healthBonus = this.computeHealthBonus(recipe, profile?.healthGoals ?? []);
 
     const finalScore =
-      fridgeMatchRatio * 0.6 + freshnessBonus * 0.3 + cuisineBonus + healthBonus;
+      fridgeMatchRatio * 0.6 + freshnessBonus * 0.3 + preferenceScore(recipe, profile);
 
     return {
       recipe,
@@ -437,12 +454,7 @@ export class RecipeRecommendationService {
   }
 
   private computeFreshnessScore(expiryDate: Date | null): number {
-    if (!expiryDate) return 80;
-    const daysLeft = Math.ceil((expiryDate.getTime() - Date.now()) / 86_400_000);
-    if (daysLeft <= 0) return 0;
-    if (daysLeft <= 2) return 20;
-    if (daysLeft <= 7) return 60;
-    return 100;
+    return expiryPriority(expiryDate);
   }
 
   private computeHealthBonus(recipe: Recipe, healthGoals: string[]): number {
@@ -477,7 +489,7 @@ export class RecipeRecommendationService {
       fridgeItems
         .filter((fi) => {
           if (!fi.expiryDate) return false;
-          return Math.ceil((fi.expiryDate.getTime() - Date.now()) / 86_400_000) <= 2;
+          return Math.ceil((new Date(fi.expiryDate).getTime() - Date.now()) / 86_400_000) <= 2;
         })
         .map((fi) => (fi.ingredient?.name ?? fi.customName ?? '').toLowerCase()),
     );

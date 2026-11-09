@@ -4,18 +4,26 @@ import { create } from 'zustand';
 // Saved to the backend in one call from onboarding/loading.tsx.
 
 interface OnboardingState {
-  mealFormats:       string[];   // step 1
-  dietType:          string;     // step 2
-  healthGoals:       string[];   // step 3
-  preferredCuisines: string[];   // step 4
-  allergies:         string[];   // step 5
-  cookingSkill:      string;     // step 6
-  householdSize:     number;     // step 7
-  cookingTools:      string[];   // step 8
+  mealFormats:       string[];
+  flavorPreferences: string[];
+  timePreference: string;
+  groceryFrequency: string;
+  dietaryRestrictions: string[];
+  dietType:          string;
+  healthGoals:       string[];
+  preferredCuisines: string[];
+  allergies:         string[];
+  cookingSkill:      string;
+  householdSize:     number;
+  cookingTools:      string[];
   initialCraving:    string;     // step 9 (free text)
 }
 
 interface OnboardingActions {
+  setFlavorPreferences: (v: string[]) => void;
+  setTimePreference: (v: string) => void;
+  setGroceryFrequency: (v: string) => void;
+  setDietaryRestrictions: (v: string[]) => void;
   setMealFormats:       (v: string[]) => void;
   setDietType:          (v: string)   => void;
   setHealthGoals:       (v: string[]) => void;
@@ -30,12 +38,16 @@ interface OnboardingActions {
 
 const defaults: OnboardingState = {
   mealFormats:       [],
+  flavorPreferences: [],
+  timePreference: "",
+  groceryFrequency: "",
+  dietaryRestrictions: [],
   dietType:          'omnivore',
   healthGoals:       [],
   preferredCuisines: [],
   allergies:         [],
   cookingSkill:      'beginner',
-  householdSize:     2,
+  householdSize:     1,
   cookingTools:      [],
   initialCraving:    '',
 };
@@ -43,6 +55,10 @@ const defaults: OnboardingState = {
 export const useOnboardingStore = create<OnboardingState & OnboardingActions>()(
   (set) => ({
     ...defaults,
+    setFlavorPreferences: (v) => set({ flavorPreferences: v }),
+    setTimePreference: (v) => set({ timePreference: v }),
+    setGroceryFrequency: (v) => set({ groceryFrequency: v }),
+    setDietaryRestrictions: (v) => set({ dietaryRestrictions: v }),
     setMealFormats:       (v) => set({ mealFormats: v }),
     setDietType:          (v) => set({ dietType: v }),
     setHealthGoals:       (v) => set({ healthGoals: v }),

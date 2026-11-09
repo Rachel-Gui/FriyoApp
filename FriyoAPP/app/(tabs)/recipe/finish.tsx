@@ -1,8 +1,6 @@
+import { LocalizedText as Text, LocalizedTouchableOpacity as TouchableOpacity, LocalizedAlert as Alert } from '@/components/ui/LocalizedNative';
 import React, { useState, useRef, useEffect } from 'react';
-import {
-  View, Text, TouchableOpacity, Image, StyleSheet,
-  Dimensions, ScrollView, Animated, Alert,
-} from 'react-native';
+import { View, Image, StyleSheet, Dimensions, ScrollView, Animated } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -11,6 +9,7 @@ import { Platform } from 'react-native';
 import { Colors }   from '@/constants/Colors';
 import { SFIcon }   from '@/components/ui/SFIcon';
 import { GlassButton } from '@/components/ui/GlassButton';
+import { useQueryClient } from '@tanstack/react-query';
 import { mealPlanService } from '@/services/mealPlanService';
 
 const { width } = Dimensions.get('window');
@@ -19,12 +18,27 @@ const PHOTO_H   = PHOTO_W * 0.68;
 
 export default function FinishCooking() {
   const router = useRouter();
+  const qc = useQueryClient();
+  const requestId = useRef(`cook-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const savingRef = useRef(false);
+  const savedLogRef = useRef<string | null>(null);
+  const [photoSaved, setPhotoSaved] = useState(false);
   const insets = useSafeAreaInsets();
-  const { recipeId, servings, title } = useLocalSearchParams<{ recipeId?: string; servings?: string; title?: string }>();
+  const { recipeId, servings, title, completionId } = useLocalSearchParams<{ recipeId?: string; servings?: string; title?: string; completionId?: string }>();
 
   const [photoUri,   setPhotoUri]   = useState<string | null>(null);
   const [mealLogId,  setMealLogId]  = useState<string | null>(null);
+  const [saveMessage, setSaveMessage] = useState('');
   const [isSaving,   setIsSaving]   = useState(false);
+
+  useEffect(() => {
+    requestId.current = `cook-${completionId ?? Date.now()}-${Math.random().toString(36).slice(2)}`;
+    savedLogRef.current = null;
+    setMealLogId(null);
+    setPhotoUri(null);
+    setPhotoSaved(false);
+    setSaveMessage('');
+  }, [recipeId, completionId]);
 
   // ── Entrance animations ───────────────────────────────────────────────────
   const checkScale   = useRef(new Animated.Value(0)).current;
@@ -56,28 +70,51 @@ export default function FinishCooking() {
     const result = source === 'camera'
       ? await ImagePicker.launchCameraAsync({ quality: 0.8 })
       : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.8 });
-    if (!result.canceled && result.assets[0]) setPhotoUri(result.assets[0].uri);
+    if (!result.canceled && result.assets[0]) { setPhotoUri(result.assets[0].uri); setPhotoSaved(false); }
   };
 
-  const saveHistory = async () => {
-    if (!recipeId || isSaving || mealLogId) return;
+  const saveHistory = async (silent = false) => {
+    if (savingRef.current) return;
+    if (!recipeId) { Alert.alert('Recipe unavailable', 'Please open the recipe and try again.'); return; }
+    savingRef.current = true;
     setIsSaving(true);
+    setSaveMessage('Saving your meal…');
     try {
-      const log = await mealPlanService.logMeal({
+      const log = savedLogRef.current ? { id: savedLogRef.current } : await mealPlanService.logMeal({
+        clientRequestId: requestId.current,
         recipeId,
-        mealType:      'dinner',
+        mealType: new Date().getHours() < 11 ? 'breakfast' : new Date().getHours() < 16 ? 'lunch' : 'dinner',
         servingsEaten: Number(servings ?? 1),
       });
-      if (photoUri) {
-        await mealPlanService.uploadMealPhoto(log.id, photoUri);
+      if (!log?.id) throw new Error('The meal could not be confirmed. Please try again.');
+      savedLogRef.current = log.id;
+      setMealLogId(log.id);
+      qc.invalidateQueries({ queryKey: ['meal-plans'] });
+      qc.invalidateQueries({ queryKey: ['meals'] });
+      qc.invalidateQueries({ queryKey: ['fridge'] });
+      qc.invalidateQueries({ queryKey: ['recipes'] });
+      if (photoUri && !photoSaved) {
+        try {
+          await mealPlanService.uploadMealPhoto(log.id, photoUri);
+          setPhotoSaved(true);
+        } catch (error: any) {
+          setSaveMessage('Meal saved. Photo upload failed; tap Save Meal Photo to retry.');
+          return true;
+        }
       }
       setMealLogId(log.id);
+      setSaveMessage('Saved to Cooking History');
+      if (!silent) Alert.alert('Saved to Cooking History', 'Your cooked meal has been saved.');
+      return true;
     } catch (error: any) {
+      setSaveMessage(error?.message ?? 'Could not save meal. Please try again.');
       Alert.alert('Could not save meal', error?.message ?? 'Please try again.');
     } finally {
+      savingRef.current = false;
       setIsSaving(false);
     }
   };
+
 
   return (
     <View style={s.root}>
@@ -94,14 +131,7 @@ export default function FinishCooking() {
           iconColor="rgba(0,0,0,0.65)"
           onPress={() => router.replace('/(tabs)' as any)}
         />
-        <GlassButton
-          variant="circular"
-          size={40}
-          icon="trophy.fill"
-          iconSize={16}
-          iconColor={Colors.black}
-          iconWeight="fill"
-        />
+
       </View>
 
       <ScrollView
@@ -136,15 +166,6 @@ export default function FinishCooking() {
         <Animated.View style={[s.heroSection, { opacity: titleOpacity }]}>
           <Text style={s.youCookedIt}>You cooked it!</Text>
           <Text style={s.dishName}>{title ?? 'Recipe Complete'}</Text>
-          <View style={s.badgeRow}>
-            <View style={s.xpBadge}>
-              <SFIcon name="star.fill" size={12} color={Colors.black} weight="fill" />
-              <Text style={s.xpText}>+150 XP</Text>
-            </View>
-            <View style={s.levelBadge}>
-              <Text style={s.levelText}>Level 13 unlocked</Text>
-            </View>
-          </View>
         </Animated.View>
 
         {/* ── Photo card ──────────────────────────────────────────────── */}
@@ -185,6 +206,8 @@ export default function FinishCooking() {
 
         {/* ── Completion actions ───────────────────────────────────────── */}
         <Animated.View style={{ opacity: cardOpacity, transform: [{ translateY: cardSlide }] }}>
+          {!!saveMessage && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={{ color: Colors.black, padding: 12 }}>{saveMessage}</Text>}
+          <Text style={{ color: Colors.gray, paddingHorizontal: 12 }}>Save your meal to record it in history. Open your fridge to review remaining ingredients.</Text>
           {/* Action cards */}
           <View style={s.actionList}>
             {ACTION_ITEMS.map(action => (
@@ -192,25 +215,31 @@ export default function FinishCooking() {
                 key={action.label}
                 style={s.actionCard}
                 activeOpacity={0.8}
+                disabled={isSaving && action.label === 'Save to Cooking History'}
+                accessibilityRole="button"
                 onPress={
                   action.label === 'Save to Cooking History'
-                    ? saveHistory
+                    ? () => saveHistory()
                     : action.label === 'Update Fridge Inventory'
-                      ? () => router.push('/(tabs)/fridge/index' as any)
-                      : () => router.replace('/(tabs)' as any)
+                      ? () => router.push('/(tabs)/fridge' as any)
+                      : () => recipeId ? router.replace({ pathname: '/(tabs)/recipe/cooking', params: { id: recipeId, servings: servings ?? '1', session: String(Date.now()) } } as any) : Alert.alert('Recipe unavailable')
                 }
               >
                 <View style={s.actionIconWrap}>
-                  <SFIcon name={action.icon as any} size={18} color={Colors.black} />
+                  <SFIcon name={action.icon as any} size={24} color={Colors.black} />
                 </View>
                 <Text style={s.actionLabel}>
-                  {action.label === 'Save to Cooking History' && mealLogId
+                  {action.label === 'Save to Cooking History' && isSaving
+                    ? 'Saving...'
+                    : action.label === 'Save to Cooking History' && photoUri && !photoSaved
+                    ? 'Save Meal Photo'
+                    : action.label === 'Save to Cooking History' && mealLogId
                     ? 'Saved to Cooking History'
                     : action.label === 'Save to Cooking History' && isSaving
                       ? 'Saving...'
                       : action.label}
                 </Text>
-                <SFIcon name="chevron.right" size={16} color="rgba(0,0,0,0.25)" />
+                <SFIcon name="chevron.right" size={16} color="#555555" />
               </TouchableOpacity>
             ))}
           </View>
@@ -405,7 +434,7 @@ const s = StyleSheet.create({
   actionCard: {
     flexDirection: 'row', alignItems: 'center', gap: 14,
     backgroundColor: Colors.white, borderRadius: 18,
-    paddingVertical: 15, paddingHorizontal: 18,
+    paddingVertical: 17, paddingHorizontal: 18, borderWidth: 1, borderColor: '#D3D3CB',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.06, shadowRadius: 8, elevation: 2,

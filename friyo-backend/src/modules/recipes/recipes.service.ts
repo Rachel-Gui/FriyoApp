@@ -1,5 +1,9 @@
+import { RecipeTranslationService, RecipeLanguage } from './recipe-translation.service';
+import { searchKeywords, externalKeyword } from './recipe-keywords';
+import { ExternalRecipesService } from './external-recipes.service';
+import { matchingFridgeItems } from './ingredient-matching';
 import {
-  Injectable, NotFoundException, ForbiddenException,
+  Injectable, NotFoundException, ForbiddenException, ServiceUnavailableException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
@@ -54,6 +58,8 @@ export class RecipesService {
     private readonly esClient: ElasticsearchClient,
 
     private readonly dataSource: DataSource,
+    private readonly externalRecipes: ExternalRecipesService,
+    private readonly translations?: RecipeTranslationService,
   ) {}
 
   // ── GET /recipes ───────────────────────────────────────────────────────────
@@ -105,11 +111,10 @@ export class RecipesService {
   // ── GET /recipes/search ────────────────────────────────────────────────────
 
   async searchRecipes(query: SearchRecipesDto, userId?: string) {
-    try {
-      return await this.elasticsearchSearch(query, userId);
-    } catch {
-      return this.postgresSearch(query);
-    }
+    // Query the authoritative catalog, including ingredient names and Chinese.
+    // An unpopulated or stale search index must not hide database recipes.
+    if (query.q.trim() && (query.page ?? 1) === 1) await this.externalRecipes.search(externalKeyword(query.q));
+    return this.postgresSearch(query);
   }
 
   private async elasticsearchSearch(query: SearchRecipesDto, userId?: string) {
@@ -150,7 +155,8 @@ export class RecipesService {
       index: ES_INDEX,
       // Cast needed: ES v8 QueryDslQueryContainer doesn't accept unknown[] for `should`
       query: esQuery as any,
-      size: 20,
+      from: ((query.page ?? 1) - 1) * (query.limit ?? 20),
+      size: query.limit ?? 20,
       _source: ['id'],
     } as any);
 
@@ -164,35 +170,40 @@ export class RecipesService {
       .createQueryBuilder('r')
       .whereInIds(ids)
       .andWhere("r.reviewStatus = 'approved'")
+      .andWhere('r.isPublished = true')
       .getMany();
 
     // Preserve ES relevance order
     const recipeMap = new Map(recipes.map((r) => [r.id, r]));
     const ordered = ids.map((id) => recipeMap.get(id)).filter(Boolean) as Recipe[];
 
-    return { items: ordered, total: result.hits.total };
+    const total = typeof result.hits.total === 'number' ? result.hits.total : result.hits.total?.value ?? ordered.length;
+    return { items: ordered, total, page: query.page ?? 1, limit: query.limit ?? 20, pages: Math.ceil(total / (query.limit ?? 20)) };
   }
 
   private async postgresSearch(query: SearchRecipesDto) {
-    const pattern = `%${query.q}%`;
-    const items = await this.recipeRepo
+    const patterns = searchKeywords(query.q).map(word => `%${word}%`);
+    const qb = this.recipeRepo
       .createQueryBuilder('r')
       .where("r.reviewStatus = 'approved'")
       .andWhere('r.isPublished = true')
       .andWhere(
-        '(r.title ILIKE :pattern OR r.description ILIKE :pattern)',
-        { pattern },
+        '(r.title ILIKE ANY(:patterns) OR r.titleZh ILIKE ANY(:patterns) OR r.titleEn ILIKE ANY(:patterns) OR r.descriptionZh ILIKE ANY(:patterns) OR r.descriptionEn ILIKE ANY(:patterns) OR CAST(r.mealType AS text) ILIKE ANY(:patterns) OR CAST(r.dietTypes AS text) ILIKE ANY(:patterns) OR r.description ILIKE ANY(:patterns) OR r.cuisineType ILIKE ANY(:patterns) OR CAST(r.tags AS text) ILIKE ANY(:patterns) OR EXISTS (SELECT 1 FROM recipe_ingredients ri LEFT JOIN ingredients i ON i.id = ri.ingredient_id WHERE ri.recipe_id = r.id AND (ri.display_name ILIKE ANY(:patterns) OR ri.display_name_zh ILIKE ANY(:patterns) OR ri.display_name_en ILIKE ANY(:patterns) OR i.name ILIKE ANY(:patterns) OR i.name_zh ILIKE ANY(:patterns) OR i.aliases::text ILIKE ANY(:patterns))))',
+        { patterns },
       )
-      .orderBy('r.likesCount', 'DESC')
-      .limit(20)
-      .getMany();
+      ;
+    if (query.category) qb.andWhere('(CAST(r.tags AS text) ILIKE :category OR CAST(r.mealType AS text) ILIKE :category OR CAST(r.dietTypes AS text) ILIKE :category)', { category: `%${externalKeyword(query.category)}%` });
+    const [items, total] = await qb.orderBy('r.likesCount', 'DESC')
+      .skip(((query.page ?? 1) - 1) * (query.limit ?? 20))
+      .take(query.limit ?? 20)
+      .getManyAndCount();
 
-    return { items, total: items.length };
+    return { items, total, page: query.page ?? 1, limit: query.limit ?? 20, pages: Math.ceil(total / (query.limit ?? 20)) };
   }
 
   // ── GET /recipes/:id ───────────────────────────────────────────────────────
 
-  async getRecipe(recipeId: string) {
+  async getRecipe(recipeId: string, language?: RecipeLanguage) {
     const recipe = await this.recipeRepo.findOne({
       where: { id: recipeId },
       relations: ['ingredients', 'ingredients.ingredient', 'steps', 'author'],
@@ -201,7 +212,15 @@ export class RecipesService {
 
     recipe.steps.sort((a, b) => a.stepNumber - b.stepNumber);
     recipe.ingredients.sort((a, b) => a.sortOrder - b.sortOrder);
+    if (language && this.translations?.automaticEnabled && !recipe.authorId && recipe.sourceUrl && recipe.isPublished && recipe.reviewStatus === RecipeReviewStatus.APPROVED) {
+      try { return await this.translations.translate(recipe, language); } catch { return recipe; }
+    }
     return recipe;
+  }
+
+  async translateRecipe(recipeId: string, language: RecipeLanguage) {
+    if (!this.translations) throw new ServiceUnavailableException('Recipe translation is not configured.');
+    return this.translations.translate(await this.getRecipe(recipeId), language);
   }
 
   // ── POST /recipes ──────────────────────────────────────────────────────────
@@ -212,7 +231,11 @@ export class RecipesService {
 
       const recipe = manager.create(Recipe, {
         title: dto.title,
+        sourceUrl: dto.source_url ?? null,
         titleZh: dto.title_zh ?? null,
+        titleEn: dto.title_en ?? null,
+        descriptionZh: dto.description_zh ?? null,
+        descriptionEn: dto.description_en ?? null,
         description: dto.description ?? null,
         cuisineType: dto.cuisine_type ?? null,
         mealType: dto.meal_type ?? null,
@@ -241,6 +264,8 @@ export class RecipesService {
             recipeId: savedRecipe.id,
             ingredientId: ri.ingredient_id ?? null,
             displayName: ri.display_name ?? null,
+            displayNameZh: ri.display_name_zh ?? null,
+            displayNameEn: ri.display_name_en ?? null,
             quantity: ri.quantity ?? null,
             unit: ri.unit ?? null,
             isOptional: ri.is_optional ?? false,
@@ -257,7 +282,12 @@ export class RecipesService {
             recipeId: savedRecipe.id,
             stepNumber: step.step_number,
             description: step.description,
+            descriptionZh: step.description_zh ?? null,
+            descriptionEn: step.description_en ?? null,
+            tipsZh: step.tips_zh ?? null,
+            tipsEn: step.tips_en ?? null,
             durationMin: step.duration_min ?? null,
+            parallelWithStepNumber: step.parallel_with_step_number ?? null,
             stepType: step.step_type ?? StepType.HANDS_ON,
             imageUrl: step.image_url ?? null,
             tips: step.tips ?? null,
@@ -283,7 +313,11 @@ export class RecipesService {
     // Build plain object of column-level updates only (no relation properties)
     // to satisfy TypeORM's _QueryDeepPartialEntity constraint
     const updates: Record<string, unknown> = {};
+    if (dto.source_url !== undefined) updates['sourceUrl'] = dto.source_url;
     if (dto.title !== undefined) updates['title'] = dto.title;
+    for (const [input, field] of [['title_en', 'titleEn'], ['description_zh', 'descriptionZh'], ['description_en', 'descriptionEn']] as const) {
+      if (dto[input] !== undefined) updates[field] = dto[input] ?? null;
+    }
     if (dto.title_zh !== undefined) updates['titleZh'] = dto.title_zh ?? null;
     if (dto.description !== undefined) updates['description'] = dto.description ?? null;
     if (dto.cuisine_type !== undefined) updates['cuisineType'] = dto.cuisine_type ?? null;
@@ -347,7 +381,7 @@ export class RecipesService {
 
     const fridgeStatus = recipe.ingredients.map((ri) => {
       const name = ri.displayName ?? ri.ingredient?.name ?? 'Unknown';
-      const matches = ri.ingredientId ? (fridgeMap.get(ri.ingredientId) ?? []) : [];
+      const matches = matchingFridgeItems(ri, fridgeItems);
       const quantityAvailable = matches.reduce((sum, fi) => sum + Number(fi.quantity), 0);
 
       return {
@@ -379,12 +413,17 @@ export class RecipesService {
     const DEFAULT_STEP_DURATION = 5;
     let cursor = 0;
 
-    const annotated = steps.map((step) => {
-      const startMin = cursor;
+    const annotated: Array<{ step: RecipeStep; startMin: number; durationMin: number; endMin: number }> = [];
+    for (const step of [...steps].sort((a, b) => a.stepNumber - b.stepNumber)) {
       const durationMin = step.durationMin ?? DEFAULT_STEP_DURATION;
-      cursor += durationMin;
-      return { step, startMin, durationMin, endMin: startMin + durationMin };
-    });
+      const parent = annotated.find(item => item.step.stepNumber === step.parallelWithStepNumber && item.step.stepType === StepType.HANDS_OFF);
+      const siblings = parent ? annotated.filter(item => item.step.parallelWithStepNumber === parent.step.stepNumber) : [];
+      const parallelStart = parent ? Math.max(parent.startMin, ...siblings.map(item => item.endMin)) : cursor;
+      const canOverlap = step.stepType === StepType.HANDS_ON && parent && parallelStart + durationMin <= parent.endMin;
+      const startMin = canOverlap ? parallelStart : cursor;
+      cursor = Math.max(cursor, startMin + durationMin);
+      annotated.push({ step, startMin, durationMin, endMin: startMin + durationMin });
+    }
 
     const handsOn: object[] = [];
     const handsOff: object[] = [];
@@ -398,31 +437,25 @@ export class RecipesService {
           start_min: startMin,
           duration_min: durationMin,
           description: step.description,
+            descriptionZh: step.descriptionZh ?? null,
+            descriptionEn: step.descriptionEn ?? null,
+            tipsZh: step.tipsZh ?? null,
+            tipsEn: step.tipsEn ?? null,
           tips: step.tips ?? null,
         });
       } else {
-        // Look ahead for hands_on tasks that fit within this hands_off period
-        const meanwhile: string[] = [];
-        let budgetLeft = durationMin;
-
-        for (let j = i + 1; j < annotated.length && budgetLeft > 0; j++) {
-          const next = annotated[j];
-          if (next.step.stepType === StepType.HANDS_ON) {
-            const d = next.durationMin;
-            if (d <= budgetLeft) {
-              meanwhile.push(
-                `Step ${next.step.stepNumber}: ${next.step.description} (${d} min)`,
-              );
-              budgetLeft -= d;
-            }
-          }
-        }
+        const meanwhile = annotated.filter(next => next.step.parallelWithStepNumber === step.stepNumber && next.startMin >= startMin && next.endMin <= startMin + durationMin)
+          .map(next => `Step ${next.step.stepNumber}: ${next.step.description} (${next.durationMin} min)`);
 
         handsOff.push({
           step: step.stepNumber,
           start_min: startMin,
           duration_min: durationMin,
           description: step.description,
+            descriptionZh: step.descriptionZh ?? null,
+            descriptionEn: step.descriptionEn ?? null,
+            tipsZh: step.tipsZh ?? null,
+            tipsEn: step.tipsEn ?? null,
           tips: step.tips ?? null,
           what_to_do_meanwhile:
             meanwhile.length > 0

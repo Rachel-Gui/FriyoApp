@@ -1,5 +1,6 @@
+import { LocalizedText as Text, LocalizedTouchableOpacity as TouchableOpacity } from '@/components/ui/LocalizedNative';
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { Colors } from '@/constants/Colors';
 import { SFIcon } from '@/components/ui/SFIcon';
 import { RecipeMetaChip } from '@/components/ui/RecipeMetaChip';

@@ -1,3 +1,6 @@
+import { searchSuggestionTags } from './search-suggestion-tags';
+import { Throttle } from '@nestjs/throttler';
+import { RecipeLanguageQueryDto, TranslateRecipeDto } from './dto/recipe-language.dto';
 import {
   Controller, Get, Post, Patch, Delete, Body, Param, Query,
   UseGuards, ParseUUIDPipe, HttpCode, HttpStatus,
@@ -47,6 +50,13 @@ export class RecipesController {
 
   // ── Recommendation routes (before /:id) ────────────────────────────────────
 
+  @Get('recommendations/search-suggestions')
+  @UseGuards(AccessTokenGuard)
+  async searchSuggestions(@CurrentUser() user: User) {
+    const recipes = await this.recommendationService.getProfileRecommendations(user.id);
+    return searchSuggestionTags(recipes);
+  }
+
   @Get('recommendations/fridge')
   @UseGuards(AccessTokenGuard)
   @ApiOperation({ summary: 'Match recipes to what is in the fridge' })
@@ -60,6 +70,12 @@ export class RecipesController {
   timeBasedRecommendations(@CurrentUser() user: User) {
     const hour = new Date().getHours();
     return this.recommendationService.getTimeBasedRecommendations(user.id, hour);
+  }
+
+  @Get('recommendations/profile')
+  @UseGuards(AccessTokenGuard)
+  profileRecommendations(@CurrentUser() user: User) {
+    return this.recommendationService.getProfileRecommendations(user.id);
   }
 
   @Get('recommendations/health')
@@ -91,8 +107,15 @@ export class RecipesController {
   @Get(':id')
   @UseGuards(AccessTokenGuard)
   @ApiOperation({ summary: 'Get full recipe detail with ingredients and steps' })
-  getRecipe(@Param('id', ParseUUIDPipe) id: string) {
-    return this.recipesService.getRecipe(id);
+  getRecipe(@Param('id', ParseUUIDPipe) id: string, @Query() query: RecipeLanguageQueryDto) {
+    return this.recipesService.getRecipe(id, query.language);
+  }
+
+  @Post(':id/translate')
+  @UseGuards(AccessTokenGuard)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  translateRecipe(@Param('id', ParseUUIDPipe) id: string, @Body() dto: TranslateRecipeDto) {
+    return this.recipesService.translateRecipe(id, dto.language);
   }
 
   @Get(':id/for-cooking')

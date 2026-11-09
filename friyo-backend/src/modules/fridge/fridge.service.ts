@@ -28,28 +28,7 @@ interface FreshnessResult {
   label: 'fresh' | 'good' | 'expiring_soon' | 'expired';
 }
 
-const DEFAULT_FRIDGE_ITEMS: Array<{
-  customName: string;
-  quantity: number;
-  unit: string;
-  storageType: StorageType;
-  daysLeft: number;
-}> = [
-  { customName: 'Baby Spinach',     quantity: 200,  unit: 'g',   storageType: StorageType.FRIDGE,  daysLeft: 1 },
-  { customName: 'Whole Milk',       quantity: 1200, unit: 'ml',  storageType: StorageType.FRIDGE,  daysLeft: 2 },
-  { customName: 'Salmon Fillet',    quantity: 350,  unit: 'g',   storageType: StorageType.FRIDGE,  daysLeft: 2 },
-  { customName: 'Fresh Pesto',      quantity: 190,  unit: 'g',   storageType: StorageType.FRIDGE,  daysLeft: 3 },
-  { customName: 'Avocados',         quantity: 2,    unit: 'pcs', storageType: StorageType.FRIDGE,  daysLeft: 4 },
-  { customName: 'Greek Yogurt',     quantity: 500,  unit: 'ml',  storageType: StorageType.FRIDGE,  daysLeft: 5 },
-  { customName: 'Large Brown Eggs', quantity: 8,    unit: 'pcs', storageType: StorageType.FRIDGE,  daysLeft: 7 },
-  { customName: 'Garlic',           quantity: 6,    unit: 'pcs', storageType: StorageType.PANTRY,  daysLeft: 21 },
-  { customName: 'Dumplings',        quantity: 20,   unit: 'pcs', storageType: StorageType.FREEZER, daysLeft: 45 },
-  { customName: 'Chicken Breast',   quantity: 400,  unit: 'g',   storageType: StorageType.FRIDGE,  daysLeft: 4 },
-  { customName: 'Olive Oil',        quantity: 250,  unit: 'ml',  storageType: StorageType.PANTRY,  daysLeft: 180 },
-  { customName: 'White Rice',       quantity: 500,  unit: 'g',   storageType: StorageType.PANTRY,  daysLeft: 180 },
-  { customName: 'Cherry Tomatoes',  quantity: 250,  unit: 'g',   storageType: StorageType.FRIDGE,  daysLeft: 5 },
-  { customName: 'Cheddar Cheese',   quantity: 180,  unit: 'g',   storageType: StorageType.FRIDGE,  daysLeft: 10 },
-];
+
 
 @Injectable()
 export class FridgeService {
@@ -93,8 +72,6 @@ export class FridgeService {
   // ── GET /fridge ────────────────────────────────────────────────────────────
 
   async getFridgeItems(userId: string, query: GetFridgeItemsDto) {
-    await this.ensureDefaultFridgeItems(userId);
-
     const qb = this.fridgeItemRepo
       .createQueryBuilder('fi')
       .leftJoinAndSelect('fi.ingredient', 'ing')
@@ -262,20 +239,18 @@ export class FridgeService {
   // ── POST /fridge/scan/:sessionId/confirm ───────────────────────────────────
 
   async confirmScan(userId: string, sessionId: string, dto: ConfirmScanDto) {
-    const session = await this.scanSessionRepo.findOne({
-      where: { id: sessionId, userId },
-    });
-    if (!session) throw new NotFoundException('Scan session not found');
-    if (session.status !== ScanStatus.COMPLETED) {
-      const rawResult = session.aiRawResult as Record<string, unknown> | null;
-      const detectedItems = rawResult?.['detected'];
-      if (!Array.isArray(detectedItems) || detectedItems.length === 0) {
+    const items = await this.dataSource.transaction(async (manager) => {
+      // Lock the owned session so retries and concurrent taps cannot duplicate stock.
+      const session = await manager.findOne(ScanSession, {
+        where: { id: sessionId, userId }, lock: { mode: 'pessimistic_write' },
+      });
+      if (!session) throw new NotFoundException('Scan session not found');
+      if (session.confirmedAt) {
+        return manager.find(FridgeItem, { where: { userId, scanSessionId: sessionId } });
+      }
+      if (session.status !== ScanStatus.COMPLETED) {
         throw new BadRequestException('Scan session is not yet completed');
       }
-      await this.scanSessionRepo.update(sessionId, { status: ScanStatus.COMPLETED });
-    }
-
-    const items = await this.dataSource.transaction(async (manager) => {
       const created: FridgeItem[] = [];
       for (const scanItem of dto.items) {
         const item = manager.create(FridgeItem, {
@@ -290,9 +265,11 @@ export class FridgeService {
         });
         created.push(await manager.save(FridgeItem, item));
       }
+      await manager.update(ScanSession, sessionId, { confirmedAt: new Date() });
       return created;
     });
 
+    if (!items.length) return [];
     const withRelations = await this.fridgeItemRepo.find({
       where: { id: In(items.map(i => i.id)) },
       relations: ['ingredient'],
@@ -349,39 +326,6 @@ export class FridgeService {
   }
 
   // ── Private helpers ────────────────────────────────────────────────────────
-
-  private async ensureDefaultFridgeItems(userId: string): Promise<void> {
-    const existing = await this.fridgeItemRepo.find({
-      where: { userId },
-      select: ['customName'],
-    });
-    const existingNames = new Set(
-      existing
-        .map(item => item.customName?.trim().toLowerCase())
-        .filter(Boolean) as string[],
-    );
-
-    const today = new Date();
-    const items = DEFAULT_FRIDGE_ITEMS.filter(
-      seed => !existingNames.has(seed.customName.toLowerCase()),
-    ).map(seed => {
-      const expiry = new Date(today);
-      expiry.setDate(today.getDate() + seed.daysLeft);
-      return this.fridgeItemRepo.create({
-        userId,
-        ingredientId: null,
-        customName: seed.customName,
-        quantity: seed.quantity,
-        unit: seed.unit,
-        storageType: seed.storageType,
-        expiryDate: expiry,
-        caloriesOverride: null,
-      });
-    });
-
-    if (items.length === 0) return;
-    await this.fridgeItemRepo.save(items);
-  }
 
   private async findOwnedItem(userId: string, itemId: string): Promise<FridgeItem> {
     const item = await this.fridgeItemRepo.findOne({

@@ -1,7 +1,7 @@
-import {
-  View, Text, TouchableOpacity, StyleSheet,
-  ScrollView, Dimensions, Animated, ActivityIndicator,
-} from 'react-native';
+import { LocalizedText as Text, LocalizedTouchableOpacity as TouchableOpacity } from '@/components/ui/LocalizedNative';
+import { useLanguageStore } from '@/store/languageStore';
+import { localizeCooking, recipeText, hasRecipeTranslation } from '@/services/recipeLanguage';
+import { View, StyleSheet, ScrollView, Dimensions, Animated, ActivityIndicator } from 'react-native';
 import { useState, useRef, useEffect, useCallback } from 'react'; // useCallback used in animateStep
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -14,7 +14,7 @@ import type { RecipeForCooking } from '@/services/types';
 
 const { width } = Dimensions.get('window');
 
-function stepsFromCooking(data: RecipeForCooking) {
+function stepsFromCooking(data: RecipeForCooking, language: 'en' | 'zh') {
   const recipeSteps = data.adaptation?.adaptedSteps?.length
     ? data.adaptation.adaptedSteps
     : data.recipe.steps;
@@ -23,7 +23,7 @@ function stepsFromCooking(data: RecipeForCooking) {
     id: index + 1,
     phase: step.stepType === 'hands_off' ? 'REST' : 'COOK',
     phaseColor: step.stepType === 'hands_off' ? Colors.blue : Colors.orange,
-    title: `Step ${step.stepNumber ?? index + 1}`,
+    title: `${recipeText('Step', language)} ${step.stepNumber ?? index + 1}`,
     instruction: step.description,
     tip: step.tips ?? '',
     duration: Math.max(0, step.durationMin ?? 0) * 60,
@@ -35,9 +35,12 @@ function stepsFromCooking(data: RecipeForCooking) {
 
 // ── Cooking Mode ──────────────────────────────────────────────────────────────
 export default function CookingMode() {
+  const language = useLanguageStore(state => state.language);
+  const t = (text: string) => recipeText(text, language);
+  const [rawData, setRawData] = useState<RecipeForCooking | null>(null);
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { id, adaptationId } = useLocalSearchParams<{ id?: string; adaptationId?: string }>();
+  const { id, adaptationId, servings, session } = useLocalSearchParams<{ id?: string; adaptationId?: string; servings?: string; session?: string }>();
 
   const [stepIdx, setStepIdx]       = useState(0);
   const [steps, setSteps]           = useState<ReturnType<typeof stepsFromCooking>>([]);
@@ -60,19 +63,32 @@ export default function CookingMode() {
       return;
     }
     setIsLoading(true);
+    setStepIdx(0);
+    setRunning(false);
+    setTimerDone(false);
+    setLoadError(false);
     recipeService.getRecipeForCooking(id, adaptationId)
       .then((data) => {
-        const nextSteps = stepsFromCooking(data);
+        setRawData(data);
+        const localized = localizeCooking(data, language);
+        const nextSteps = stepsFromCooking(localized, language);
         if (nextSteps.length) {
           setSteps(nextSteps);
           setStepIdx(0);
         }
-        setRecipeTitle(data.recipe.title);
+        setRecipeTitle(localized.recipe.title);
         setLoadError(nextSteps.length === 0);
       })
       .catch(() => setLoadError(true))
       .finally(() => setIsLoading(false));
-  }, [id, adaptationId]);
+  }, [id, adaptationId, session]);
+
+  useEffect(() => {
+    if (!rawData) return;
+    const localized = localizeCooking(rawData, language);
+    setSteps(stepsFromCooking(localized, language));
+    setRecipeTitle(localized.recipe.title);
+  }, [language, rawData]);
 
   const step = steps[stepIdx];
   const total = steps.length;
@@ -82,7 +98,7 @@ export default function CookingMode() {
     setRunning(false);
     setTimerDone(false);
     setTimerSecs(step?.duration ?? 0);
-  }, [stepIdx, step]);
+  }, [stepIdx, step?.duration, session]);
 
   // Timer tick
   useEffect(() => {
@@ -102,31 +118,6 @@ export default function CookingMode() {
     }
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, [running]);
-
-  if (isLoading) {
-    return (
-      <View style={[s.root, { alignItems: 'center', justifyContent: 'center' }]}>
-        <ActivityIndicator color={Colors.gray} />
-      </View>
-    );
-  }
-
-  if (loadError || !step) {
-    return (
-      <View style={[s.root, { alignItems: 'center', justifyContent: 'center', padding: 28 }]}>
-        <Text style={{ fontFamily: 'DMSans_700Bold', fontSize: 20, color: Colors.black }}>Cooking steps unavailable</Text>
-        <Text style={{ fontFamily: 'DMSans_400Regular', fontSize: 14, color: Colors.gray, textAlign: 'center', marginTop: 8 }}>
-          Friyo could not load this recipe. Please check your connection.
-        </Text>
-        <TouchableOpacity style={{ marginTop: 20, backgroundColor: Colors.yellow, borderRadius: 24, paddingHorizontal: 22, paddingVertical: 12 }} onPress={() => router.back()}>
-          <Text style={{ fontFamily: 'DMSans_700Bold', color: Colors.black }}>Go back</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
-
-  const mins = String(Math.floor(timerSecs / 60)).padStart(2, '0');
-  const secs = String(timerSecs % 60).padStart(2, '0');
 
   const animateStep = useCallback((direction: 'next' | 'prev', newIdx: number) => {
     const outX  = direction === 'next' ? -width : width;
@@ -148,7 +139,33 @@ export default function CookingMode() {
 
   const goNext = () => { if (stepIdx < total - 1) animateStep('next', stepIdx + 1); };
   const goPrev = () => { if (stepIdx > 0)          animateStep('prev', stepIdx - 1); };
-  const goFinish = () => router.push({ pathname: '/(tabs)/recipe/finish', params: { recipeId: id, servings: '1', title: recipeTitle } } as any);
+  if (isLoading) {
+    return (
+      <View style={[s.root, { alignItems: 'center', justifyContent: 'center' }]}>
+        <ActivityIndicator color={Colors.gray} />
+      </View>
+    );
+  }
+
+  if (loadError || !step) {
+    return (
+      <View style={[s.root, { alignItems: 'center', justifyContent: 'center', padding: 28 }]}>
+        <Text style={{ fontFamily: 'DMSans_700Bold', fontSize: 20, color: Colors.black }}>{t('Cooking steps unavailable')}</Text>
+        <Text style={{ fontFamily: 'DMSans_400Regular', fontSize: 14, color: Colors.gray, textAlign: 'center', marginTop: 8 }}>
+          {t('Friyo could not load this recipe. Please check your connection.')}
+        </Text>
+        <TouchableOpacity style={{ marginTop: 20, backgroundColor: Colors.yellow, borderRadius: 24, paddingHorizontal: 22, paddingVertical: 12 }} onPress={() => router.back()}>
+          <Text style={{ fontFamily: 'DMSans_700Bold', color: Colors.black }}>{t('Go back')}</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  const mins = String(Math.floor(timerSecs / 60)).padStart(2, '0');
+  const secs = String(timerSecs % 60).padStart(2, '0');
+
+
+  const goFinish = () => router.push({ pathname: '/(tabs)/recipe/finish', params: { recipeId: id, servings: servings ?? '1', title: recipeTitle, completionId: String(Date.now()) } } as any);
 
   const isLast  = stepIdx === total - 1;
   const isFirst = stepIdx === 0;
@@ -166,7 +183,7 @@ export default function CookingMode() {
 
           <View style={s.topCenter}>
             <Text style={s.topTitle} numberOfLines={1}>{recipeTitle}</Text>
-            <Text style={s.topSub}>Step {stepIdx + 1} of {total}</Text>
+            <Text style={s.topSub}>{t('Step')} {stepIdx + 1} / {total}</Text>
           </View>
 
           <View style={s.glassBtn} />
@@ -187,12 +204,12 @@ export default function CookingMode() {
         <View style={s.phaseRow}>
           <View style={[s.phaseBadge, { backgroundColor: step.phaseColor + '22' }]}>
             <View style={[s.phaseDot, { backgroundColor: step.phaseColor }]} />
-            <Text style={[s.phaseText, { color: step.phaseColor }]}>{step.phase}</Text>
+            <Text style={[s.phaseText, { color: step.phaseColor }]}>{t(step.phase)}</Text>
           </View>
           {step.duration > 0 && (
             <View style={s.durationBadge}>
               <SFIcon name="timer" size={12} color={Colors.gray} />
-              <Text style={s.durationText}>~{Math.ceil(step.duration / 60)} min</Text>
+              <Text style={s.durationText}>~{Math.ceil(step.duration / 60)} {t('min')}</Text>
             </View>
           )}
         </View>
@@ -200,6 +217,7 @@ export default function CookingMode() {
         {/* Animated step card */}
         <Animated.View style={[s.stepCard, { transform: [{ translateX: slideX }], opacity: cardOpacity }]}>
           <Text style={s.stepTitle}>{step.title}</Text>
+          {rawData && !hasRecipeTranslation(rawData.recipe, language) && <Text style={s.tipText}>{t('Original text (translation unavailable)')}</Text>}
           <Text style={s.stepInstruction}>{step.instruction}</Text>
 
           {step.tip ? (
@@ -217,14 +235,14 @@ export default function CookingMode() {
               {mins}<Text style={s.timerColon}>:</Text>{secs}
             </Text>
             <View style={s.timerLabels}>
-              <Text style={s.timerUnit}>MINS</Text>
-              <Text style={s.timerUnit}>SECS</Text>
+              <Text style={s.timerUnit}>{t('MINS')}</Text>
+              <Text style={s.timerUnit}>{t('SECS')}</Text>
             </View>
 
             {timerDone ? (
               <View style={s.timerDoneBadge}>
                 <SFIcon name="checkmark.circle.fill" size={16} color={Colors.green} weight="fill" />
-                <Text style={s.timerDoneText}>Done! Continue to next step.</Text>
+                <Text style={s.timerDoneText}>{t('Done! Continue to next step.')}</Text>
               </View>
             ) : (
               <TouchableOpacity
@@ -236,17 +254,18 @@ export default function CookingMode() {
                 }}
               >
                 <Text style={s.timerBtnText}>
-                  {running ? 'Pause Timer' : 'Start Timer'}
+                  {t(running ? 'Pause Timer' : 'Start Timer')}
                 </Text>
               </TouchableOpacity>
             )}
           </View>
         )}
 
+        
         {/* Ingredients for this step */}
         {step.stepIngredients.length > 0 && (
           <View style={s.ingBlock}>
-            <Text style={s.ingBlockTitle}>Ingredients for this step</Text>
+            <Text style={s.ingBlockTitle}>{t('Ingredients for this step')}</Text>
             {step.stepIngredients.map((item, i) => (
               <View key={i} style={s.ingRow}>
                 <View style={s.ingBullet} />
@@ -265,17 +284,17 @@ export default function CookingMode() {
           disabled={isFirst}
         >
           <Text style={[s.navBtnText, isFirst && s.navBtnTextDisabled]}>
-            ← Previous
+            {t('← Previous')}
           </Text>
         </TouchableOpacity>
 
         {isLast ? (
           <TouchableOpacity style={s.finishBtn} onPress={goFinish}>
-            <Text style={s.finishBtnText}>🎉  Finish Cooking</Text>
+            <Text style={s.finishBtnText}>{t('🎉  Finish Cooking')}</Text>
           </TouchableOpacity>
         ) : (
           <TouchableOpacity style={s.nextBtn} onPress={goNext}>
-            <Text style={s.nextBtnText}>Next Step →</Text>
+            <Text style={s.nextBtnText}>{t('Next Step →')}</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -442,7 +461,9 @@ const s = StyleSheet.create({
     elevation: 10,
   },
   navBtn: {
-    flex: 0,
+    flexGrow: 0,
+    flexShrink: 0,
+    minWidth: 110,
     paddingVertical: 16,
     paddingHorizontal: 20,
     borderRadius: 50,

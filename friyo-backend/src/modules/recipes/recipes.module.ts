@@ -1,3 +1,5 @@
+import { RecipeTranslationService } from './recipe-translation.service';
+import { ExternalRecipesService } from './external-recipes.service';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
@@ -34,6 +36,8 @@ import { RecipeRecommendationService }   from './recipe-recommendation.service';
   controllers: [RecipesController],
   providers: [
     RecipesService,
+    ExternalRecipesService,
+    RecipeTranslationService,
     RecipeRecommendationService,
     {
       provide: 'ELASTICSEARCH_CLIENT',

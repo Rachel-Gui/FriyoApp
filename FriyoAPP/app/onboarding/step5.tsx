@@ -1,6 +1,8 @@
+import { useLanguageStore } from '@/store/languageStore';
+import { LocalizedText as Text } from '@/components/ui/LocalizedNative';
 import { useState } from 'react';
 import { useOnboardingStore } from '@/store/onboardingStore';
-import { Text } from 'react-native';
+
 import { useRouter } from 'expo-router';
 import OnboardingLayout from '@/components/onboarding/OnboardingLayout';
 import OnboardingChip from '@/components/onboarding/OnboardingChip';
@@ -12,9 +14,10 @@ const EQUIPMENT = [
 ];
 
 export default function Step5() {
+  const language = useLanguageStore(state => state.language);
   const setCookingTools = useOnboardingStore(s => s.setCookingTools);
   const router = useRouter();
-  const [selected, setSelected] = useState<string[]>([]);
+  const [selected, setSelected] = useState<string[]>(useOnboardingStore.getState().cookingTools);
   const toggle = (l: string) =>
     setSelected((p) => p.includes(l) ? p.filter((x) => x !== l) : [...p, l]);
 
@@ -28,7 +31,7 @@ export default function Step5() {
 
   return (
     <OnboardingLayout
-      title={title}
+      title={language === 'zh' ? <Text style={{ fontSize: 30, fontFamily: 'DMSans_700Bold', lineHeight: 38 }}>你的厨房有哪些工具？</Text> : title}
       subtitle="Choose what you have in kitchen"
       onNext={() => { setCookingTools(selected); router.push('/onboarding/step6'); }}
       canProceed={selected.length > 0}

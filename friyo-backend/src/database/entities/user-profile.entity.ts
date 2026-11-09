@@ -52,7 +52,25 @@ export class UserProfile {
   @Column({ name: 'cooking_tools', type: 'jsonb', default: '[]' })
   cookingTools: string[];
 
-  @Column({ name: 'household_size', type: 'int', default: 1 })
+  @Column({ name: 'meal_formats', type: 'jsonb', default: '[]' })
+  mealFormats: string[];
+
+  @Column({ name: 'flavor_preferences', type: 'jsonb', default: '[]' })
+  flavorPreferences: string[];
+
+  @Column({ name: 'dietary_restrictions', type: 'jsonb', default: '[]' })
+  dietaryRestrictions: string[];
+
+  @Column({ name: 'time_preference', default: '' })
+  timePreference: string;
+
+  @Column({ name: 'grocery_frequency', default: '' })
+  groceryFrequency: string;
+
+  @Column({ name: 'initial_craving', type: 'text', default: '' })
+  initialCraving: string;
+
+  @Column({ name: 'household_size' , type: 'int', default: 1 })
   householdSize: number;
 
   @Column({ name: 'health_goals', type: 'jsonb', default: '[]' })

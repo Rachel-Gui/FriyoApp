@@ -49,6 +49,15 @@ export class Recipe {
   @Column({ type: 'text', nullable: true })
   description: string | null;
 
+  @Column({ name: 'title_en', nullable: true, type: 'varchar' })
+  titleEn: string | null;
+
+  @Column({ name: 'description_zh', nullable: true, type: 'text' })
+  descriptionZh: string | null;
+
+  @Column({ name: 'description_en', nullable: true, type: 'text' })
+  descriptionEn: string | null;
+
   @Column({ name: 'cuisine_type', nullable: true, type: 'varchar' })
   cuisineType: string | null;
 

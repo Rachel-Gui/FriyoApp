@@ -1,5 +1,6 @@
+import { LocalizedText as Text, LocalizedTextInput as TextInput, LocalizedTouchableOpacity as TouchableOpacity } from '@/components/ui/LocalizedNative';
 import { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors } from '@/constants/Colors';
@@ -8,7 +9,7 @@ import { useOnboardingStore } from '@/store/onboardingStore';
 export default function Step9() {
   const router = useRouter();
   const setInitialCraving = useOnboardingStore(s => s.setInitialCraving);
-  const [text, setText] = useState('');
+  const [text, setText] = useState(useOnboardingStore.getState().initialCraving);
 
   return (
     <SafeAreaView style={s.container}>
@@ -28,6 +29,7 @@ export default function Step9() {
             style={s.textArea}
             placeholder="Craving, ingredients, mood, or time limit…"
             placeholderTextColor={Colors.gray}
+            maxLength={1000}
             multiline
             value={text}
             onChangeText={setText}

@@ -1,11 +1,14 @@
 import {
   IsUUID, IsEnum, IsNumber, IsDateString, IsOptional,
-  IsBoolean, IsString, Min, Max,
+  IsBoolean, IsString, Min, Max, MaxLength, MinLength,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { MealType } from '../../../database/entities/meal-log.entity';
 
 export class LogMealDto {
+  @IsOptional() @IsString() @MinLength(1) @MaxLength(100)
+  client_request_id?: string;
+
   @IsUUID('4')
   recipe_id: string;
 

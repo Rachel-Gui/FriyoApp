@@ -195,6 +195,10 @@ export class MealPlansService {
   // ── 5. POST /meal-plans/log ────────────────────────────────────────────────
 
   async logMeal(userId: string, dto: LogMealDto) {
+    if (dto.client_request_id) {
+      const existing = await this.mealLogRepo.findOne({ where: { userId, clientRequestId: dto.client_request_id }, relations: ['recipe', 'adaptation'] });
+      if (existing) return existing;
+    }
     const recipe = await this.recipeRepo.findOne({ where: { id: dto.recipe_id } });
     if (!recipe) throw new NotFoundException('Recipe not found');
 
@@ -208,6 +212,7 @@ export class MealPlansService {
 
     const log = this.mealLogRepo.create({
       userId,
+      clientRequestId: dto.client_request_id ?? null,
       recipeId: dto.recipe_id,
       adaptationId: dto.adaptation_id ?? null,
       mealType: dto.meal_type,
@@ -219,7 +224,16 @@ export class MealPlansService {
       notes: dto.notes ?? null,
     });
 
-    const saved = await this.mealLogRepo.save(log);
+    let saved: MealLog;
+    try {
+      saved = await this.mealLogRepo.save(log);
+    } catch (error) {
+      if (dto.client_request_id && (error as { code?: string }).code === '23505') {
+        const existing = await this.mealLogRepo.findOne({ where: { userId, clientRequestId: dto.client_request_id }, relations: ['recipe', 'adaptation'] });
+        if (existing) return existing;
+      }
+      throw error;
+    }
 
     // Best-effort fridge deduction — failure does not roll back the log
     try {

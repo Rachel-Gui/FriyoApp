@@ -1,7 +1,11 @@
-import {
-  View, Text, ScrollView, TouchableOpacity, Image,
-  StyleSheet, Dimensions, Animated, Modal, useColorScheme, Platform, Share, Alert,
-} from 'react-native';
+import { isSeasoning } from '@/services/seasonings';
+import { aiConsentService } from '@/services/aiConsentService';
+import { LocalizedText as Text, LocalizedTouchableOpacity as TouchableOpacity, LocalizedAlert as Alert } from '@/components/ui/LocalizedNative';
+import { useLanguageStore } from '@/store/languageStore';
+import { localizeRecipe, localizeCooking, recipeText, hasRecipeTranslation } from '@/services/recipeLanguage';
+import { recipeSource, recipeSourceLink } from '@/services/recipeSource';
+import { Linking } from 'react-native';
+import { View, ScrollView, Image, StyleSheet, Dimensions, Animated, Modal, useColorScheme, Platform, Share } from 'react-native';
 import { useRef, useState, useEffect, useCallback } from 'react';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
@@ -12,11 +16,12 @@ import { Colors }  from '@/constants/Colors';
 import { SFIcon }  from '@/components/ui/SFIcon';
 import { recipeService } from '@/services/recipeService';
 import { mealPlanService } from '@/services/mealPlanService';
+import { shoppingListService } from '@/services/shoppingListService';
 import { localImageForText } from '@/services/localRecipeImages';
 import type { Recipe } from '@/services/types';
 // ── Local types (previously imported from services/api) ───────────────────────
-type RecipeDetail    = { id: string; title: string; badge?: string; time: string; baseServings: number; calories: number; difficulty: string; rating: number; reviewCount: number; description: string; ingredients: Ingredient[]; steps: Step[]; imageUrl?: string };
-type Ingredient      = { id: string; name: string; baseAmt: number; unit: string; icon: string; inFridge: boolean };
+type RecipeDetail    = { id: string; title: string; badge?: string; time: string; baseServings: number; calories: number; difficulty: string; rating: number; reviewCount: number; description: string; ingredients: Ingredient[]; steps: Step[]; imageUrl?: string; sourceUrl?: string | null };
+type Ingredient      = { id: string; name: string; baseAmt: number | null; unit: string; icon: string; inFridge: boolean };
 type FridgeMatchItem = { name: string; have: boolean };
 type Step            = { id: string; num: number; title: string; dur: string; type: string; timerSec: number; info: string };
 type Review          = { id: string; user: string; avatar: string; stars: number; text: string; date: string; tries: number };
@@ -42,12 +47,13 @@ const EMPTY_RECIPE: RecipeDetail = {
 // ── Image helper ──────────────────────────────────────────────────────────────
 const imgSrc = (url: string | undefined, title: string) => url ? { uri: url } : localImageForText(title);
 
-function recipeToDetail(apiRecipe: Recipe): RecipeDetail {
+function recipeToDetail(apiRecipe: Recipe, language: 'en' | 'zh'): RecipeDetail {
   return {
     id:           apiRecipe.id,
+    sourceUrl: apiRecipe.sourceUrl,
     title:        apiRecipe.title,
-    badge:        apiRecipe.cuisineType?.toUpperCase(),
-    time:         `${(apiRecipe.prepTimeMin ?? 0) + (apiRecipe.cookTimeMin ?? 0)} min`,
+    badge:        recipeText(apiRecipe.cuisineType || '', language).toUpperCase(),
+    time:         `${(apiRecipe.prepTimeMin ?? 0) + (apiRecipe.cookTimeMin ?? 0)} ${recipeText('min', language)}`,
     baseServings: apiRecipe.servings ?? 2,
     calories:     apiRecipe.caloriesPerServing ?? 0,
     difficulty:   apiRecipe.difficulty ?? 'Medium',
@@ -64,19 +70,19 @@ function ingredientsFromRecipe(apiRecipe: Recipe): Ingredient[] {
   return (apiRecipe.ingredients ?? []).map((ing, index) => ({
     id:       ing.id ?? String(index),
     name:     ing.ingredientName,
-    baseAmt:  Number(ing.quantity ?? 0),
+    baseAmt:  ing.quantity == null ? null : Number(ing.quantity),
     unit:     ing.unit ?? '',
     icon:     '•',
     inFridge: false,
   }));
 }
 
-function stepsFromRecipe(apiRecipe: Recipe): Step[] {
+function stepsFromRecipe(apiRecipe: Recipe, language: 'en' | 'zh'): Step[] {
   return (apiRecipe.steps ?? []).map((step, index) => ({
     id:       step.id ?? String(index + 1),
     num:      step.stepNumber ?? index + 1,
-    title:    `Step ${step.stepNumber ?? index + 1}`,
-    dur:      `${step.durationMin ?? 0} min`,
+    title:    `${recipeText('Step', language)} ${step.stepNumber ?? index + 1}`,
+    dur:      `${step.durationMin ?? 0} ${recipeText('min', language)}`,
     type:     step.stepType === 'hands_off' ? 'hands-off' : 'hands-on',
     timerSec: Math.max(0, step.durationMin ?? 0) * 60,
     info:     step.description,
@@ -145,11 +151,21 @@ function TimerButton({ seconds, isDark }: { seconds: number; isDark: boolean }) 
 // ── Main screen ───────────────────────────────────────────────────────────────
 
 export default function RecipeDetail() {
+  const language = useLanguageStore(state => state.language);
+  const t = (text: string) => recipeText(text, language);
+  const [translationVersion, setTranslationVersion] = useState(0);
+  const [translating, setTranslating] = useState(false);
+  const [translationAvailable, setTranslationAvailable] = useState(true);
   const router   = useRouter();
   const insets   = useSafeAreaInsets();
   const scheme   = useColorScheme() ?? 'light';
   const isDark   = scheme === 'dark';
-  const { id }   = useLocalSearchParams<{ id: string }>();
+  const { id, from } = useLocalSearchParams<{ id: string; from?: string }>();
+  const goBack = () => {
+    if (from === 'search') { router.navigate('/(tabs)/search'); return; }
+    if (router.canGoBack()) router.back();
+    else router.replace(from === 'search' ? '/(tabs)/search' : '/(tabs)' as any);
+  };
 
   // Theme
   const bg       = isDark ? '#111111' : Colors.white;
@@ -162,6 +178,7 @@ export default function RecipeDetail() {
   const [recipe,      setRecipe]      = useState<RecipeDetail>(EMPTY_RECIPE);
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
   const [fridgeMatch, setFridgeMatch] = useState<FridgeMatchItem[]>([]);
+  const [timeline, setTimeline] = useState<import('@/services/types').CookingTimeline | null>(null);
   const [steps,       setSteps]       = useState<Step[]>([]);
   const [reviews,     setReviews]     = useState<Review[]>([]);
   const [apiError,    setApiError]    = useState(false);
@@ -187,26 +204,43 @@ export default function RecipeDetail() {
   useEffect(() => {
     if (!id) { setIsLoading(false); return; }
 
+    let active = true;
     (async () => {
       try {
-        const data = await recipeService.getRecipeDetail(id);
-        const detail = recipeToDetail(data);
-        const apiIngredients = ingredientsFromRecipe(data);
-        const apiSteps = stepsFromRecipe(data);
+        const [originalData, originalCookingData] = await Promise.all([
+          recipeService.getRecipeDetail(id, language),
+          recipeService.getRecipeForCooking(id).catch(() => null),
+        ]);
+        if (!active) return;
+        setTranslationAvailable(hasRecipeTranslation(originalData, language));
+        const data = localizeRecipe(originalData, language);
+        const cookingData = originalCookingData ? localizeCooking(originalCookingData, language) : null;
+        const detail = recipeToDetail(data, language);
+        const fridgeByName = new Map(
+          (cookingData?.fridgeStatus ?? []).map(item => [item.ingredientName.trim().toLowerCase(), item.inFridge]),
+        );
+        const apiIngredients = ingredientsFromRecipe(data).map(item => ({
+          ...item,
+          inFridge: fridgeByName.get(item.name.trim().toLowerCase()) ?? false,
+        }));
+        const apiSteps = stepsFromRecipe(data, language);
 
         setRecipe(detail);
+        void recipeService.getSavedRecipes().then(saved => active && setIsSaved(saved.some(recipe => recipe.id === id))).catch(() => {});
         setIngredients(apiIngredients);
         setFridgeMatch(apiIngredients.map(ing => ({ name: ing.name, have: ing.inFridge })));
         setSteps(apiSteps);
-        setServings(detail.baseServings);
+        setTimeline(cookingData?.cookingTimeline ?? null);
+        setServings(current => recipe.id === id ? current : 1);
         setApiError(false);
       } catch (err: any) {
-        if (err?.name !== 'AbortError') setApiError(true);
+        if (active && err?.name !== 'AbortError') setApiError(true);
       } finally {
-        setIsLoading(false);
+        if (active) setIsLoading(false);
       }
     })();
-  }, [id]);
+    return () => { active = false; };
+  }, [id, language, translationVersion]);
 
   const switchTab = (i: number) => {
     setActiveTab(i);
@@ -233,11 +267,12 @@ export default function RecipeDetail() {
     Animated.spring(anim, { toValue: to, useNativeDriver: true, stiffness: 420, damping: 22 });
 
   const ratio         = recipe.baseServings > 0 ? servings / recipe.baseServings : 1;
-  const inFridgeCount = ingredients.filter(i => i.inFridge).length;
+  const mainMatches = fridgeMatch.filter(item => !isSeasoning(item.name));
+  const inFridgeCount = mainMatches.filter(item => item.have).length;
 
   // ── Save / unsave ──────────────────────────────────────────────────────────
   const toggleSave = async () => {
-    if (savePending || !id) { setIsSaved(v => !v); return; }
+    if (savePending || !id) return;
     const next = !isSaved;
     setIsSaved(next);
     setSavePending(true);
@@ -245,6 +280,7 @@ export default function RecipeDetail() {
       if (next) await recipeService.saveRecipe(id);
       else await recipeService.unsaveRecipe(id);
     } catch {
+      Alert.alert(t('Could not save recipe'), t('Please try again.'));
       setIsSaved(!next); // revert on error
     } finally {
       setSavePending(false);
@@ -256,9 +292,9 @@ export default function RecipeDetail() {
     try {
       await Share.share({
         title: recipe.title,
-        message: `Check out "${recipe.title}" on Friyo — ${recipe.time}, ${recipe.difficulty}. ${recipe.description.slice(0, 100)}...`,
+        message: `Check out "${recipe.title}" on Friyo — ${recipe.time}, ${recipe.difficulty}. ${recipe.description}${recipe.sourceUrl ? `\n${recipe.sourceUrl}` : ''}`,
       });
-    } catch {}
+    } catch { Alert.alert('Could not share recipe', 'Please try again.'); }
   };
 
   // ── Log meal ───────────────────────────────────────────────────────────────
@@ -272,9 +308,33 @@ export default function RecipeDetail() {
       });
       setCookDone(true);
     } catch (error: any) {
-      Alert.alert('Could not log meal', error?.message ?? 'Please try again.');
+      Alert.alert(t('Could not log meal'), error?.message ?? t('Please try again.'));
     } finally {
       setCookLogging(false);
+    }
+  };
+
+  const addMissingToShoppingList = async () => {
+    const missing = ingredients.filter(item => !(fridgeMatch.find(match => match.name === item.name)?.have ?? item.inFridge));
+    if (!missing.length) {
+      Alert.alert(t('Nothing to add'), t('You already have every ingredient for this recipe.'));
+      return;
+    }
+
+    try {
+      await shoppingListService.addItems(missing.map(item => ({
+        name: item.name,
+        quantity: Number(((item.baseAmt ?? 0) * ratio).toFixed((item.baseAmt ?? 0) >= 10 ? 0 : 1)),
+        unit: item.unit,
+        recipeId: recipe.id,
+        recipeTitle: recipe.title,
+      })));
+      Alert.alert(t('Added to Shopping List'), `${missing.length} missing ingredient(s) added.`, [
+        { text: 'Keep browsing', style: 'cancel' },
+        { text: 'View list', onPress: () => router.push('/(tabs)/shopping-list' as any) },
+      ]);
+    } catch {
+      Alert.alert(t('Could not update list'), t('Please try again.'));
     }
   };
 
@@ -302,13 +362,13 @@ export default function RecipeDetail() {
     return (
       <View style={[s.root, { backgroundColor: bg, alignItems: 'center', justifyContent: 'center', padding: 28 }]}>
         <Text style={{ fontFamily: 'DMSans_700Bold', fontSize: 20, color: txt, textAlign: 'center' }}>
-          Recipe unavailable
+          {t('Recipe unavailable')}
         </Text>
         <Text style={{ fontFamily: 'DMSans_400Regular', fontSize: 14, color: sub, textAlign: 'center', marginTop: 8 }}>
-          Friyo could not load this recipe. Check your connection and try again.
+          {t('Friyo could not load this recipe. Check your connection and try again.')}
         </Text>
-        <TouchableOpacity style={{ marginTop: 20, paddingHorizontal: 22, paddingVertical: 12, borderRadius: 24, backgroundColor: Colors.yellow }} onPress={() => router.back()}>
-          <Text style={{ fontFamily: 'DMSans_700Bold', color: Colors.black }}>Go back</Text>
+        <TouchableOpacity style={{ marginTop: 20, paddingHorizontal: 22, paddingVertical: 12, borderRadius: 24, backgroundColor: Colors.yellow }} onPress={goBack}>
+          <Text style={{ fontFamily: 'DMSans_700Bold', color: Colors.black }}>{t('Go back')}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -348,7 +408,7 @@ export default function RecipeDetail() {
 
           {/* Nav row */}
           <SafeAreaView style={s.navRow} edges={['top']}>
-            <TouchableOpacity onPress={() => router.back()} style={s.glassBtn}>
+            <TouchableOpacity onPress={goBack} style={s.glassBtn}>
               <BlurView intensity={60} tint="light" style={s.glassBtnInner}>
                 <SFIcon name="chevron.left" size={18} color={Colors.white} weight="regular" />
               </BlurView>
@@ -389,14 +449,14 @@ export default function RecipeDetail() {
         <View style={[s.statsBar, { backgroundColor: bg, borderBottomColor: border }]}>
           {([
             { sfIcon: 'timer',      label: 'Time',       value: recipe.time },
-            { sfIcon: 'person.2',   label: 'Servings',   value: `${servings} ppl` },
-            { sfIcon: 'flame',      label: 'Calories',   value: `${Math.round(recipe.calories * ratio)} kcal` },
+            { sfIcon: 'person.2',   label: 'Servings',   value: `${servings} ${t('ppl')}` },
+            { sfIcon: 'flame',      label: 'Calories',   value: `${Math.round(recipe.calories * ratio)} ${t('kcal')}` },
             { sfIcon: 'chart.bar',  label: 'Difficulty', value: recipe.difficulty },
           ] as const).map((stat, i) => (
             <View key={i} style={[s.statItem, i > 0 && { borderLeftWidth: 1, borderLeftColor: border }]}>
               <SFIcon name={stat.sfIcon} size={18} color={isDark ? '#CCC' : 'rgba(0,0,0,0.55)'} />
-              <Text style={[s.statVal, { color: txt }]}>{stat.value}</Text>
-              <Text style={[s.statLabel, { color: sub }]}>{stat.label}</Text>
+              <Text style={[s.statVal, { color: txt }]}>{t(stat.value)}</Text>
+              <Text style={[s.statLabel, { color: sub }]}>{t(stat.label)}</Text>
             </View>
           ))}
         </View>
@@ -406,34 +466,54 @@ export default function RecipeDetail() {
           {/* ── Fridge match banner ──────────────────────────────────────────── */}
           <View style={[s.matchCard, { backgroundColor: isDark ? '#1A2A1A' : Colors.greenLight }]}>
             <View style={s.matchHeader}>
-              <Text style={s.matchTitle}>🧊 Fridge match</Text>
+              <Text style={s.matchTitle}>🧊 {t('Fridge match')}</Text>
               <View style={[s.matchBadge, { backgroundColor: Colors.green }]}>
-                <Text style={s.matchBadgeText}>{inFridgeCount}/{ingredients.length} items</Text>
+                <Text style={s.matchBadgeText}>{inFridgeCount}/{mainMatches.length} {t('items')}</Text>
               </View>
             </View>
-            {fridgeMatch.map((item, i) => (
+            {mainMatches.map((item, i) => (
               <View key={i} style={s.matchRow}>
-                <Text style={{ fontSize: 14, color: item.have ? Colors.green : Colors.red, fontFamily: 'DMSans_700Bold' }}>
-                  {item.have ? '✓' : '✗'}
-                </Text>
-                <Text style={[s.matchItemName, { color: txt }]}>{item.name}</Text>
-                {!item.have && (
-                  <View style={s.needBadge}>
-                    <Text style={s.needText}>Need to buy</Text>
-                  </View>
-                )}
+                <Text style={{ color: item.have ? Colors.green : Colors.red }}>{item.have ? '✓' : '✗'}</Text>
+                <Text translate={false} style={[s.matchItemName, { color: txt }]}>{item.name}</Text>
+                {!item.have && <View style={s.needBadge}><Text style={s.needText}>{t('Need to buy')}</Text></View>}
               </View>
             ))}
+            {fridgeMatch.some(item => isSeasoning(item.name)) && <>
+              <Text style={[s.matchTitle, { marginTop: 14, color: txt }]}>Seasonings · confirm what you have</Text>
+              <Text style={{ color: sub, marginVertical: 6 }}>Separate from your main ingredient match. Checks apply to this recipe only.</Text>
+              {fridgeMatch.filter(item => isSeasoning(item.name)).map(item => (
+                <TouchableOpacity key={item.name} accessibilityRole="checkbox" accessibilityState={{ checked: item.have }}
+                  accessibilityLabel={item.name} style={[s.matchRow, { minHeight: 44 }]}
+                  onPress={() => setFridgeMatch(current => current.map(match => match.name === item.name ? { ...match, have: !match.have } : match))}>
+                  <SFIcon name={item.have ? 'checkmark.circle.fill' : 'plus.circle'} size={24} color={item.have ? Colors.green : sub} />
+                  <Text translate={false} style={[s.matchItemName, { color: txt }]}>{item.name}</Text>
+                  <Text style={{ color: sub }}>{item.have ? 'Have it' : 'Confirm'}</Text>
+                </TouchableOpacity>
+              ))}
+            </>}
+
           </View>
 
           {/* ── Description ──────────────────────────────────────────────────── */}
+          <TouchableOpacity disabled={!recipeSourceLink(recipe.sourceUrl)} onPress={() => { const url = recipeSourceLink(recipe.sourceUrl); if (url) void Linking.openURL(url).catch(() => Alert.alert(t('Could not open source'))); }}>
+            <Text style={[s.description, { color: sub }]}>{t('Source')}: {recipeSource(recipe.sourceUrl)}{recipeSourceLink(recipe.sourceUrl) ? ` · ${t('View original')}` : ''}</Text>
+          </TouchableOpacity>
+          
+          {!translationAvailable && <Text style={[s.description, { color: sub }]}>{t('Original text (translation unavailable)')}</Text>}
+          {!translationAvailable && <TouchableOpacity disabled={translating} onPress={async () => {
+            if (!(await aiConsentService.requestConsent())) return;
+            setTranslating(true);
+            try { await recipeService.translateRecipe(id, language); setTranslationVersion(value => value + 1); }
+            catch (error: any) { Alert.alert('Could not translate recipe', error?.message || 'Please try again.'); }
+            finally { setTranslating(false); }
+          }}><Text style={{ paddingVertical: 12, color: txt }}>{translating ? 'Translating…' : 'Translate recipe'}</Text></TouchableOpacity>}
           <Text style={[s.description, { color: sub }]}>{recipe.description}</Text>
 
           {/* ── Tab bar ──────────────────────────────────────────────────────── */}
           <View style={[s.tabBarWrap, { borderBottomColor: border }]}>
             {['Ingredients', 'How to Cook', 'Reviews'].map((name, i) => (
               <TouchableOpacity key={i} style={s.tabItem} onPress={() => switchTab(i)}>
-                <Text style={[s.tabLabel, { color: activeTab === i ? txt : sub }]}>{name}</Text>
+                <Text style={[s.tabLabel, { color: activeTab === i ? txt : sub }]}>{t(name)}</Text>
               </TouchableOpacity>
             ))}
             <Animated.View style={[s.tabUnderline, { left: tabUnderlineX, width: TAB_W }]} />
@@ -444,7 +524,7 @@ export default function RecipeDetail() {
             <View style={{ marginTop: 18 }}>
               {/* Servings adjuster */}
               <View style={[s.servingsRow, { backgroundColor: cardAlt }]}>
-                <Text style={[s.servingsLabel, { color: sub }]}>Servings</Text>
+                <Text style={[s.servingsLabel, { color: sub }]}>{t('Servings')}</Text>
                 <View style={s.servingsCtrl}>
                   <TouchableOpacity
                     onPress={() => setServings(v => Math.max(1, v - 1))}
@@ -465,24 +545,24 @@ export default function RecipeDetail() {
               {/* Ingredient list */}
               <View style={[s.ingCard, { backgroundColor: card }]}>
                 {ingredients.map((item, i) => {
-                  const scaledAmt = (item.baseAmt * ratio).toFixed(item.baseAmt >= 10 ? 0 : 1);
+                  const scaledAmt = item.baseAmt == null ? '' : ((item.baseAmt ?? 0) * ratio).toFixed((item.baseAmt ?? 0) >= 10 ? 0 : 1);
                   return (
                     <View key={item.id} style={[s.ingRow, i < ingredients.length - 1 && { borderBottomWidth: 1, borderBottomColor: border }]}>
                       <View style={[s.ingIconWrap, { backgroundColor: cardAlt }]}>
                         <Text style={{ fontSize: 20 }}>{item.icon}</Text>
                       </View>
                       <View style={{ flex: 1 }}>
-                        <Text style={[s.ingName, { color: txt }]}>{item.name}</Text>
-                        <Text style={[s.ingAmt, { color: sub }]}>{scaledAmt} {item.unit}</Text>
+                        <Text translate={false} style={[s.ingName, { color: txt }]}>{item.name}</Text>
+                        <Text style={[s.ingAmt, { color: sub }]}>{scaledAmt} {t(item.unit)}</Text>
                       </View>
                       {item.inFridge ? (
                         <View style={s.inFridgeTag}>
-                          <Text style={s.inFridgeText}>✓ In Fridge</Text>
+                          <Text style={s.inFridgeText}>✓ {t('In Fridge')}</Text>
                         </View>
                       ) : (
                         <View style={s.needTag}>
                           <SFIcon name="cart" size={11} color={Colors.blue} />
-                          <Text style={s.needTagText}> Buy</Text>
+                          <Text style={s.needTagText}> {t('Buy')}</Text>
                         </View>
                       )}
                     </View>
@@ -492,14 +572,10 @@ export default function RecipeDetail() {
 
               <TouchableOpacity
                 style={s.cartBtn}
-                onPress={() => Alert.alert(
-                  '🛒 Shopping List',
-                  `${ingredients.filter(i => !i.inFridge).length} missing ingredient(s) noted.\n\nShopping list sync coming in the next update.`,
-                  [{ text: 'OK' }],
-                )}
+                onPress={addMissingToShoppingList}
               >
                 <SFIcon name="cart" size={16} color={Colors.white} />
-                <Text style={s.cartBtnText}>Add Missing Ingredients to List</Text>
+                <Text style={s.cartBtnText}>{t('Add Missing Ingredients to List')}</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -510,14 +586,22 @@ export default function RecipeDetail() {
               <View style={s.legendRow}>
                 <View style={s.legendItem}>
                   <View style={[s.legendDot, { backgroundColor: Colors.orange }]} />
-                  <Text style={[s.legendTxt, { color: sub }]}>Hands-on</Text>
+                  <Text style={[s.legendTxt, { color: sub }]}>{t('Hands-on')}</Text>
                 </View>
                 <View style={s.legendItem}>
                   <View style={[s.legendDot, { backgroundColor: '#14B8A6' }]} />
-                  <Text style={[s.legendTxt, { color: sub }]}>Hands-off (wait)</Text>
+                  <Text style={[s.legendTxt, { color: sub }]}>{t('Hands-off (wait)')}</Text>
                 </View>
               </View>
 
+              {timeline && <View style={{ padding: 16, marginBottom: 16, backgroundColor: cardAlt, borderRadius: 14 }}>
+                <Text style={{ color: txt, fontFamily: 'DMSans_700Bold', fontSize: 18 }}>Cooking Timeline</Text>
+                {[...timeline.handsOn, ...timeline.handsOff].sort((a, b) => a.startMin - b.startMin || a.step - b.step).map(item => <View key={item.step} style={{ marginTop: 12, borderLeftWidth: 3, borderLeftColor: timeline.handsOff.includes(item) ? '#14B8A6' : Colors.orange, paddingLeft: 12 }}>
+                  <Text style={{ color: txt }}>Minute {item.startMin}–{item.startMin + item.durationMin} · Step {item.step}</Text>
+                  <Text style={{ color: sub, marginTop: 4 }}>{item.description}</Text>
+                  {item.whatToDoMeanwhile && <Text style={{ color: sub, marginTop: 6 }}>{item.whatToDoMeanwhile}</Text>}
+                </View>)}
+              </View>}
               {steps.map((step) => {
                 const isExpanded = expandedStep === step.id;
                 const isHandsOn  = step.type === 'hands-on';
@@ -598,7 +682,7 @@ export default function RecipeDetail() {
                     </View>
                     <Text style={[s.reviewDate, { color: sub }]}>{r.date}</Text>
                   </View>
-                  <Text style={[s.reviewText, { color: sub }]}>{r.text}</Text>
+                  <Text translate={false} style={[s.reviewText, { color: sub }]}>{r.text}</Text>
                   <Text style={[s.reviewTries, { color: sub }]}>Cooked {r.tries}× ·</Text>
                 </View>
               ))}
@@ -615,17 +699,17 @@ export default function RecipeDetail() {
             activeOpacity={1}
             onPressIn={() => spring(ctaScale, 0.96).start()}
             onPressOut={() => spring(ctaScale, 1).start()}
-            onPress={() => router.push({ pathname: '/(tabs)/recipe/cooking', params: { id: recipe.id } } as any)}
+            onPress={() => router.push({ pathname: '/(tabs)/recipe/cooking', params: { id: recipe.id, servings: String(servings) } } as any)}
           >
             <SFIcon name="play.fill" size={16} color={Colors.black} weight="fill" />
-            <Text style={s.startBtnText}>Start Cooking</Text>
+            <Text style={s.startBtnText}>{t('Start Cooking')}</Text>
           </TouchableOpacity>
         </Animated.View>
         <TouchableOpacity
           style={[s.cookedBtn, { backgroundColor: cardAlt }]}
-          onPress={() => setShowCookModal(true)}
+          onPress={handleShare} accessibilityLabel="Share recipe"
         >
-          <SFIcon name="fork.knife" size={22} color={isDark ? '#CCC' : 'rgba(0,0,0,0.6)'} />
+          <SFIcon name="square.and.arrow.up" size={22} color={isDark ? '#CCC' : 'rgba(0,0,0,0.6)'} />
         </TouchableOpacity>
       </View>
 
@@ -640,7 +724,7 @@ export default function RecipeDetail() {
               <Text style={[s.cookDoneTitle, { color: txt }]}>Logged to Meal Plan!</Text>
               <Text style={[s.cookDoneSub, { color: sub }]}>Great cook! The meal has been saved to today's plan.</Text>
               <TouchableOpacity style={s.startBtn} onPress={() => { setShowCookModal(false); setCookDone(false); }}>
-                <Text style={s.startBtnText}>Done</Text>
+                <Text style={s.startBtnText}>{t('Done')}</Text>
               </TouchableOpacity>
             </View>
           ) : (
@@ -662,7 +746,7 @@ export default function RecipeDetail() {
                   }}
                 >
                   <SFIcon name="camera" size={32} color={isDark ? '#CCC' : 'rgba(0,0,0,0.6)'} />
-                  <Text style={[s.photoBtnText, { color: txt }]}>Camera</Text>
+                  <Text style={[s.photoBtnText, { color: txt }]}>{t('Camera')}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[s.photoBtn, { backgroundColor: cardAlt }]}
@@ -680,7 +764,7 @@ export default function RecipeDetail() {
                   }}
                 >
                   <SFIcon name="photo.on.rectangle" size={32} color={isDark ? '#CCC' : 'rgba(0,0,0,0.6)'} />
-                  <Text style={[s.photoBtnText, { color: txt }]}>Library</Text>
+                  <Text style={[s.photoBtnText, { color: txt }]}>{t('Library')}</Text>
                 </TouchableOpacity>
               </View>
               <TouchableOpacity
@@ -691,7 +775,7 @@ export default function RecipeDetail() {
                 <Text style={s.startBtnText}>{cookLogging ? '...' : '✓  Log to Meal Plan'}</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[s.skipBtn, { backgroundColor: cardAlt }]} onPress={() => setShowCookModal(false)}>
-                <Text style={[s.skipBtnText, { color: txt }]}>Skip photo</Text>
+                <Text style={[s.skipBtnText, { color: txt }]}>{t('Skip photo')}</Text>
               </TouchableOpacity>
             </>
           )}

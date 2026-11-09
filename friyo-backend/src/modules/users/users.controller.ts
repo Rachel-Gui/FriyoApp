@@ -103,6 +103,12 @@ export class UsersController {
       profile = this.profileRepo.create({ userId: user.id });
     }
 
+    if (dto.meal_formats !== undefined) profile.mealFormats = dto.meal_formats;
+    if (dto.flavor_preferences !== undefined) profile.flavorPreferences = dto.flavor_preferences;
+    if (dto.dietary_restrictions !== undefined) profile.dietaryRestrictions = dto.dietary_restrictions;
+    if (dto.time_preference !== undefined) profile.timePreference = dto.time_preference;
+    if (dto.grocery_frequency !== undefined) profile.groceryFrequency = dto.grocery_frequency;
+    if (dto.initial_craving !== undefined) profile.initialCraving = dto.initial_craving;
     if (dto.diet_type           !== undefined) profile.dietType           = dto.diet_type;
     if (dto.allergies           !== undefined) profile.allergies          = dto.allergies;
     if (dto.cooking_skill       !== undefined) profile.cookingSkill       = dto.cooking_skill;
@@ -126,6 +132,7 @@ export class UsersController {
   private serializeProfile(profile: UserProfile | null) {
     if (!profile) {
       return {
+        meal_formats: [], flavor_preferences: [], dietary_restrictions: [], time_preference: '', grocery_frequency: '', initial_craving: '',
         diet_type: 'omnivore', allergies: [], cooking_skill: 'beginner',
         cooking_tools: [], household_size: 1, health_goals: [],
         preferred_cuisines: [], disliked_ingredients: [], weekly_cooking_days: 3,
@@ -133,6 +140,12 @@ export class UsersController {
       };
     }
     return {
+      meal_formats: profile.mealFormats,
+      flavor_preferences: profile.flavorPreferences,
+      dietary_restrictions: profile.dietaryRestrictions,
+      time_preference: profile.timePreference,
+      grocery_frequency: profile.groceryFrequency,
+      initial_craving: profile.initialCraving,
       diet_type:            profile.dietType,
       allergies:            profile.allergies,
       cooking_skill:        profile.cookingSkill,

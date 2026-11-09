@@ -1,3 +1,5 @@
+import { useLanguageStore } from '@/store/languageStore';
+import { shoppingListService } from './shoppingListService';
 import { aiConsentService } from './aiConsentService';
 // ─────────────────────────────────────────────────────────────────────────────
 // services/aiService.ts
@@ -18,6 +20,7 @@ interface NutritionAnalysis {
 }
 
 export const aiService = {
+  getUsage: () => get<{ plan: 'vip' | 'free'; unlimited: boolean; remaining: number | null; dailyLimit: number | null; expiresAt: string | null }>('/ai/usage'),
 
   /**
    * Send a free-form message to the Friyo AI chef assistant.
@@ -29,7 +32,7 @@ export const aiService = {
    */
   async sendMessage(message: string, conversationId?: string): Promise<AIMessage> {
     if (!(await aiConsentService.requestConsent())) throw new Error('AI processing permission is required');
-    return post<AIMessage>('/ai/chat', { message, conversationId });
+    return post<AIMessage>('/ai/chat', { message, conversationId, shoppingList: (await shoppingListService.getItems()).filter(item => !item.checked).slice(0, 50).map(({ name, quantity, unit }) => ({ name, quantity, unit })), language: useLanguageStore.getState().language });
   },
 
   /**
@@ -40,7 +43,7 @@ export const aiService = {
    */
   async getQuickSuggestion(context?: string): Promise<AIMessage> {
     if (!(await aiConsentService.requestConsent())) throw new Error('AI processing permission is required');
-    return post<AIMessage>('/ai/suggest', { context });
+    return post<AIMessage>('/ai/suggest', { context, language: useLanguageStore.getState().language });
   },
 
   /**
@@ -50,7 +53,9 @@ export const aiService = {
    * @param limit  Max number of insights to return (default decided by server).
    */
   async getInsights(limit?: number): Promise<AIInsight[]> {
-    const qs = limit !== undefined ? `?limit=${limit}` : '';
+    const params = new URLSearchParams({ language: useLanguageStore.getState().language });
+    if (limit !== undefined) params.set('limit', String(limit));
+    const qs = `?${params}`;
     return get<AIInsight[]>(`/ai/insights${qs}`);
   },
 

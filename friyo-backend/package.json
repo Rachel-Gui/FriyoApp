@@ -23,7 +23,8 @@
     "migration:revert": "npm run typeorm -- migration:revert -d src/database/data-source.ts",
     "seed:run": "ts-node src/database/seeds/index.ts",
     "migration:run:prod": "typeorm migration:run -d dist/database/data-source.js",
-    "migration:show:prod": "typeorm migration:show -d dist/database/data-source.js"
+    "migration:show:prod": "typeorm migration:show -d dist/database/data-source.js",
+    "verify:recipes": "npm run build && node scripts/verify-recipes.cjs"
   },
   "dependencies": {
     "@aws-sdk/client-rekognition": "^3.0.0",
