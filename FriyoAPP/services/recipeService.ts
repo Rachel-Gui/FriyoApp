@@ -3,6 +3,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { get, post, del } from './api';
+import { buildRecipeGraph } from './recipeWorkbench';
 import type { Recipe, RecipeForCooking, PaginatedResponse } from './types';
 
 export function normalizeRecipe(value: Recipe | { recipe: Recipe }): Recipe {
@@ -28,6 +29,7 @@ interface SearchParams {
 }
 
 export const recipeService = {
+  submitRecipe: (recipe: import('./recipeWorkbench').WorkbenchRecipe) => post<{ id: string }>('/recipes', { ...recipe, prep_time_min: 0, cook_time_min: recipe.steps.every(step => step.duration_min !== undefined) ? Math.max(0, ...buildRecipeGraph(recipe.steps).map(node => node.end)) : 0 }),
   getSearchSuggestions: () => get<string[]>('/recipes/recommendations/search-suggestions'),
   async listRecipes(page = 1, limit = 30): Promise<PaginatedResponse<Recipe> & { items: Recipe[] }> {
     const result = await get<PaginatedResponse<Recipe>>(`/recipes?page=${page}&limit=${limit}`);

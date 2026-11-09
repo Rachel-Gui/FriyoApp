@@ -22,6 +22,9 @@ export class AiController {
 
   // ── POST /ai/chat ──────────────────────────────────────────────────────────
 
+  @Get('status')
+  status() { return this.aiService.getStatus(); }
+
   @Get('usage')
   usageStatus(@CurrentUser() user: User) { return this.usage.status(user.id); }
 

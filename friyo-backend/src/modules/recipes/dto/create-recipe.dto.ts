@@ -1,6 +1,6 @@
 import {
   IsString, IsOptional, IsEnum, IsInt, IsNumber, IsArray,
-  IsBoolean, IsUrl, ValidateNested, Min, Max, ArrayMinSize, IsUUID,
+  IsBoolean, IsUrl, ValidateNested, Min, Max, ArrayMinSize, ArrayMaxSize, MaxLength, IsNotEmpty, IsUUID,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import {
@@ -78,11 +78,14 @@ export class CreateRecipeStepDto {
   step_number: number;
 
   @IsString()
+  @IsNotEmpty()
+  @MaxLength(10000)
   description: string;
 
   @IsOptional()
   @IsInt()
   @Min(1)
+  @Max(1440)
   @Type(() => Number)
   duration_min?: number;
 
@@ -118,6 +121,8 @@ export class CreateRecipeDto {
   source_url?: string;
 
   @IsString()
+  @IsNotEmpty()
+  @MaxLength(300)
   title: string;
 
   @IsOptional()
@@ -190,12 +195,15 @@ export class CreateRecipeDto {
   cuisines?: string[] = [];
 
   @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(200)
   @ValidateNested({ each: true })
   @Type(() => CreateRecipeIngredientDto)
   ingredients: CreateRecipeIngredientDto[];
 
   @IsArray()
   @ArrayMinSize(1)
+  @ArrayMaxSize(100)
   @ValidateNested({ each: true })
   @Type(() => CreateRecipeStepDto)
   steps: CreateRecipeStepDto[];

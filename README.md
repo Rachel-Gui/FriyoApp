@@ -121,6 +121,12 @@ OpenAI, AWS, Firebase, and Elasticsearch.
 - `friyo-backend/.github/workflows/` for deployment workflows
 - `FriyoAPP/eas.json` for Expo Application Services builds
 
+## Recipe workbench
+
+Import structured recipe JSON, edit ingredient and step tables, and preview cooking
+dependencies at `/recipe-workbench`. See [workbench and AI acceptance](docs/RECIPE_WORKBENCH.md)
+for local preview, the 20-recipe catalog migration and AI configuration/testing.
+
 ## Launch preparation
 
 See [上线准备与验收](docs/LAUNCH_CHECKLIST.md) for configuration, deployment order,

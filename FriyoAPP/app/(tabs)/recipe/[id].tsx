@@ -1,3 +1,5 @@
+import { RecipeGraph } from '@/components/RecipeGraph';
+import type { WorkbenchStep } from '@/services/recipeWorkbench';
 import { isSeasoning } from '@/services/seasonings';
 import { aiConsentService } from '@/services/aiConsentService';
 import { LocalizedText as Text, LocalizedTouchableOpacity as TouchableOpacity, LocalizedAlert as Alert } from '@/components/ui/LocalizedNative';
@@ -178,6 +180,7 @@ export default function RecipeDetail() {
   const [recipe,      setRecipe]      = useState<RecipeDetail>(EMPTY_RECIPE);
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
   const [fridgeMatch, setFridgeMatch] = useState<FridgeMatchItem[]>([]);
+  const [graphSteps, setGraphSteps] = useState<WorkbenchStep[]>([]);
   const [timeline, setTimeline] = useState<import('@/services/types').CookingTimeline | null>(null);
   const [steps,       setSteps]       = useState<Step[]>([]);
   const [reviews,     setReviews]     = useState<Review[]>([]);
@@ -226,6 +229,7 @@ export default function RecipeDetail() {
         const apiSteps = stepsFromRecipe(data, language);
 
         setRecipe(detail);
+        setGraphSteps(data.steps.map(step => ({ step_number: step.stepNumber, description: step.description, duration_min: step.durationMin ?? undefined, step_type: step.stepType, parallel_with_step_number: step.parallelWithStepNumber ?? undefined })));
         void recipeService.getSavedRecipes().then(saved => active && setIsSaved(saved.some(recipe => recipe.id === id))).catch(() => {});
         setIngredients(apiIngredients);
         setFridgeMatch(apiIngredients.map(ing => ({ name: ing.name, have: ing.inFridge })));
@@ -594,14 +598,10 @@ export default function RecipeDetail() {
                 </View>
               </View>
 
-              {timeline && <View style={{ padding: 16, marginBottom: 16, backgroundColor: cardAlt, borderRadius: 14 }}>
-                <Text style={{ color: txt, fontFamily: 'DMSans_700Bold', fontSize: 18 }}>Cooking Timeline</Text>
-                {[...timeline.handsOn, ...timeline.handsOff].sort((a, b) => a.startMin - b.startMin || a.step - b.step).map(item => <View key={item.step} style={{ marginTop: 12, borderLeftWidth: 3, borderLeftColor: timeline.handsOff.includes(item) ? '#14B8A6' : Colors.orange, paddingLeft: 12 }}>
-                  <Text style={{ color: txt }}>Minute {item.startMin}–{item.startMin + item.durationMin} · Step {item.step}</Text>
-                  <Text style={{ color: sub, marginTop: 4 }}>{item.description}</Text>
-                  {item.whatToDoMeanwhile && <Text style={{ color: sub, marginTop: 6 }}>{item.whatToDoMeanwhile}</Text>}
-                </View>)}
-              </View>}
+              {!!graphSteps.length && <RecipeGraph steps={graphSteps} />}
+              <TouchableOpacity onPress={() => router.push({ pathname: '/recipe-workbench' as any, params: { id } })} style={{ padding: 14, marginVertical: 12, borderRadius: 12, backgroundColor: '#E8EFCF' }}>
+                <Text style={{ color: '#183C30', fontWeight: '700' }}>Open in Recipe Workbench →</Text>
+              </TouchableOpacity>
               {steps.map((step) => {
                 const isExpanded = expandedStep === step.id;
                 const isHandsOn  = step.type === 'hands-on';

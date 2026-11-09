@@ -187,3 +187,21 @@ Optional backend output build and iOS Metro export stalled without completion an
 - Live health reported API OK, PostgreSQL connected and Redis connected. Actual authenticated API acceptance passed: new account remains empty across repeated fridge reads; empty fridge yields no fridge matches but preference recommendations remain available; oil alone creates no fridge match; Chinese tomato/egg names yield 100% main-ingredient coverage for the new tomato egg recipe; recipe detail and cooking responses contain steps/ingredients with unknown calories kept null; saving cooking history succeeds, retry uses the same log, and month history contains it.
 - The disposable verification account and its test inventory/history were deleted through the authenticated account-deletion endpoint after successful acceptance. No personal account was used for write tests.
 - Production endpoint remains https://friyo-api-production.up.railway.app/api/v1 ; TestFlight version 1.0.1 (29) uses the same endpoint and needs no additional native upload for these backend changes. Physical-device acceptance remains separate.
+
+
+## 2026-11-08 — Recipe workbench, catalog and AI matching
+
+See [acceptance details](RECIPE_WORKBENCH.md). Implemented standalone structured
+JSON import, editable ingredients/steps, draft storage and JSON export, explicit
+parallel-task graph preview, and review submission of recipe copies. Added 20
+authored bilingual recipes in migration 010 and explicit AI response provenance,
+profile fallback for an empty fridge, total-time filtering and keyword ranking.
+
+Validation: frontend tests 28/28, TypeScript check, backend tests 84/84 and build.
+Chrome interaction verified import, editing, overlap fallback and draft
+save/restore; graph branches and joins were visually inspected. The existing
+CI staging smoke now checks AI status, local chat, durable recipe links and
+invalid step references. That staging check and actual migration execution were
+not run locally because Docker was unavailable. No usable AI provider key was
+configured locally; actual model responses and native-device behavior remain
+unverified. No live database migration or deployment was performed.

@@ -20,6 +20,7 @@ interface NutritionAnalysis {
 }
 
 export const aiService = {
+  getStatus: () => get<{ configuredProviders: string[]; localMatchingAvailable: boolean }>('/ai/status'),
   getUsage: () => get<{ plan: 'vip' | 'free'; unlimited: boolean; remaining: number | null; dailyLimit: number | null; expiresAt: string | null }>('/ai/usage'),
 
   /**

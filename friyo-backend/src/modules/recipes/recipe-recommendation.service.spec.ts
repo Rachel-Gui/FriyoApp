@@ -29,3 +29,15 @@ describe('fridge recommendation scoring', () => {
     expect(near.final_score).toBeGreaterThan(far.final_score);
   });
 });
+
+describe('recommendation eligibility', () => {
+  it('requires affirmative diet metadata and supports vegan dishes for vegetarians', () => {
+    expect(service.passesFilters({ dietTypes: [], ingredients: [] }, { dietType: 'vegan' })).toBe(false);
+    expect(service.passesFilters({ dietTypes: ['vegan'], ingredients: [] }, { dietType: 'vegetarian' })).toBe(true);
+  });
+  it('understands onboarding equipment labels when checking pans and pots', () => {
+    const recipe = { ingredients: [], requiredTools: ['pan', 'pot'] };
+    expect(service.passesFilters(recipe, { cookingTools: ['Basic pan and pot only'] })).toBe(true);
+    expect(service.passesFilters({ ...recipe, requiredTools: ['oven'] }, { cookingTools: ['Basic pan and pot only'] })).toBe(false);
+  });
+});

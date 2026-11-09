@@ -354,8 +354,9 @@ export class RecipeRecommendationService {
     // Diet type compatibility
     if (
       profile.dietType && profile.dietType !== 'omnivore' &&
-      (recipe.dietTypes ?? []).length > 0 &&
-      !recipe.dietTypes.includes(profile.dietType)
+      !(recipe.dietTypes ?? []).includes(profile.dietType) &&
+      !(profile.dietType === 'vegetarian' && (recipe.dietTypes ?? []).includes('vegan')) &&
+      !(profile.dietType === 'pescatarian' && (recipe.dietTypes ?? []).some(type => ['vegan', 'vegetarian'].includes(type)))
     ) {
       return false;
     }
@@ -376,6 +377,8 @@ export class RecipeRecommendationService {
     // Tool availability (only if profile has tools listed)
     if ((profile.cookingTools ?? []).length > 0 && (recipe.requiredTools ?? []).length > 0) {
       const userTools = new Set(profile.cookingTools.map((t) => t.toLowerCase()));
+      if (userTools.has('basic pan and pot only') || userTools.has('stove')) { userTools.add('pan'); userTools.add('pot'); }
+      if (userTools.has('basic pan and pot only')) userTools.add('stove');
       for (const tool of recipe.requiredTools) {
         if (!userTools.has(tool.toLowerCase())) return false;
       }

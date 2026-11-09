@@ -48,7 +48,7 @@ export function RecipeRecommendationCard({ recipes, onStartCooking }: Props) {
                 <View style={card.metaRow}>
                   <RecipeMetaChip icon="timer" label={recipe.cookingTime} iconColor="rgba(0,0,0,0.4)" />
                   <RecipeMetaChip label={recipe.difficulty} />
-                  <RecipeMetaChip icon="flame" label={`${recipe.calories} kcal`} iconColor={Colors.orange} />
+                  {recipe.calories != null && recipe.calories > 0 && <RecipeMetaChip icon="flame" label={`≈${recipe.calories} kcal`} iconColor={Colors.orange} />}
                 </View>
               </View>
 

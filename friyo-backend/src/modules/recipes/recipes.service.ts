@@ -1,3 +1,4 @@
+import { validateRecipeSteps } from './recipe-step-validation';
 import { RecipeTranslationService, RecipeLanguage } from './recipe-translation.service';
 import { searchKeywords, externalKeyword } from './recipe-keywords';
 import { ExternalRecipesService } from './external-recipes.service';
@@ -226,6 +227,7 @@ export class RecipesService {
   // ── POST /recipes ──────────────────────────────────────────────────────────
 
   async createRecipe(userId: string, dto: CreateRecipeDto) {
+    validateRecipeSteps(dto.steps);
     return this.dataSource.transaction(async (manager) => {
       const isAdmin = !!(await this.adminUserRepo.findOne({ where: { id: userId } }));
 
@@ -419,7 +421,7 @@ export class RecipesService {
       const parent = annotated.find(item => item.step.stepNumber === step.parallelWithStepNumber && item.step.stepType === StepType.HANDS_OFF);
       const siblings = parent ? annotated.filter(item => item.step.parallelWithStepNumber === parent.step.stepNumber) : [];
       const parallelStart = parent ? Math.max(parent.startMin, ...siblings.map(item => item.endMin)) : cursor;
-      const canOverlap = step.stepType === StepType.HANDS_ON && parent && parallelStart + durationMin <= parent.endMin;
+      const canOverlap = step.stepType === StepType.HANDS_ON && step.durationMin != null && parent && parent.step.durationMin != null && parallelStart + durationMin <= parent.endMin;
       const startMin = canOverlap ? parallelStart : cursor;
       cursor = Math.max(cursor, startMin + durationMin);
       annotated.push({ step, startMin, durationMin, endMin: startMin + durationMin });

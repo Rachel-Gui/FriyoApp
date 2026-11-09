@@ -3,7 +3,7 @@ import { ChatDto } from './dto/chat.dto';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 describe('AI shopping context', () => {
-  const service = () => new AiService({ find: async () => [] } as any, { findOne: async () => null } as any, {} as any, {} as any, { get: () => undefined } as any, { matchRecipesToFridge: async () => [] } as any);
+  const service = () => new AiService({ find: async () => [] } as any, { findOne: async () => null } as any, {} as any, {} as any, { get: () => undefined } as any, { matchRecipesToFridge: async () => [], getProfileRecommendations: async () => [] } as any);
   it('keeps unchecked purchases distinct from food already available in the fallback', async () => {
     const reply = await service().chat('user', 'What can I cook?', undefined, 'en', [{ name: 'Tomatoes', quantity: 2, unit: 'pcs' }]);
     expect(reply.message).toContain('Tomatoes (2 pcs)');

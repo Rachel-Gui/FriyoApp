@@ -45,6 +45,22 @@ try {
   assert.ok(search.items.some(item => item.id === detail.id), 'Ingredient keyword must find the recipe');
   await request(`/fridge/items/${ingredientItem.id}`, 'DELETE', undefined, 204);
   console.log('PASS: authenticated recipe search, detail, cooking steps and custom-name fridge recommendations');
+  const aiStatus = await request('/ai/status');
+  assert.equal(aiStatus.local_matching_available, true);
+  assert.ok(Array.isArray(aiStatus.configured_providers));
+  if (!aiStatus.configured_providers.length || process.env.FRIYO_SMOKE_AI === 'true') {
+    const reply = await request('/ai/chat', 'POST', { message: 'What can I cook in 30 minutes?', language: 'en' }, 201);
+    assert.ok(['local', 'gemini', 'openai'].includes(reply.response_source));
+    assert.ok(reply.suggested_recipes.length, 'Empty fridge must return profile catalog alternatives');
+    for (const suggestion of reply.suggested_recipes) {
+      const persisted = await request(`/recipes/${suggestion.recipe_id}`);
+      assert.ok(persisted.id, 'AI cards must reference durable catalog recipes');
+      assert.equal(suggestion.used_ingredients.length, 0, 'Empty fridge must not claim available food');
+    }
+    console.log(`PASS: AI ${reply.response_source}, empty-fridge alternatives and durable recipe links`);
+  }
+  await request('/recipes', 'POST', { title: 'Invalid graph test', ingredients: [{ display_name: 'Rice' }], steps: [{ step_number: 1, description: 'Cook rice', parallel_with_step_number: 2 }] }, 400);
+  console.log('PASS: authenticated AI status and invalid dependency rejection');
   const refreshed = await request('/auth/refresh','POST',{ refresh_token: auth.refresh_token });
   access = refreshed.access_token; assert.ok(access);
   await request('/auth/refresh','POST',{ refresh_token: auth.refresh_token },401);

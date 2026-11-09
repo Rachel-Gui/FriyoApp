@@ -279,6 +279,11 @@ export default function RecipeHome() {
           <SFIcon name="cart" size={20} color={Colors.black} /><Text>Shopping List</Text>
         </TouchableOpacity>
 
+        <TouchableOpacity onPress={() => router.push('/recipe-workbench' as any)} accessibilityRole="button" style={{ marginHorizontal: 20, marginBottom: 14, padding: 16, borderRadius: 18, backgroundColor: '#E8EFCF' }}>
+          <Text style={{ fontWeight: '700' }}>Recipe Workbench →</Text>
+          <Text>Import · Edit tables · Preview cooking graph</Text>
+        </TouchableOpacity>
+
         {/* Search → AI */}
         <TouchableOpacity
           style={s.searchBar}

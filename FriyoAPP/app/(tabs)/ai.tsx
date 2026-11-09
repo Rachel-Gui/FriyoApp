@@ -22,6 +22,7 @@ interface Message {
   text:             string;
   suggestedRecipes?: AIRecipeSuggestion[];
   quickActions?:     string[];
+  sourceLabel?: string;
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -120,6 +121,7 @@ function MessageBubble({
       <Image source={require('../../assets/images/mascot-chat.png')} style={s.avatar} resizeMode="contain" />
 
       <View style={s.aiContent}>
+        {!!msg.sourceLabel && <Text style={{ color: '#52625D', fontSize: 12, marginBottom: 6 }}>{msg.sourceLabel}</Text>}
         {!!msg.text && (
           <View style={[s.bubble, s.bubbleAI]}>
             <RichText text={msg.text} style={s.bubbleText} />
@@ -179,6 +181,9 @@ export default function AITab() {
   const insets = useSafeAreaInsets();
 
   const [messages,     setMessages]    = useState<Message[]>([INITIAL_MESSAGE]);
+  const [connectionStatus, setConnectionStatus] = useState('Checking AI configuration…');
+  const checkConnection = useCallback(() => { setConnectionStatus('Checking AI configuration…'); aiService.getStatus().then(status => setConnectionStatus(status.configuredProviders.length ? `Configured: ${status.configuredProviders.join(', ')} · Send a message to test` : 'Local matching ready · AI provider not configured')).catch(err => setConnectionStatus(`Connection failed: ${err.message}`)); }, []);
+  useEffect(checkConnection, [checkConnection]);
   const [historyOpen,  setHistoryOpen] = useState(false);
   const [isTyping,     setIsTyping]    = useState(false);
 
@@ -209,17 +214,18 @@ export default function AITab() {
           id:               uid(),
           role:             'ai',
           text:             response.message,
+          sourceLabel: `${response.responseSource === 'local' ? (response.fallbackReason === 'provider_unavailable' ? 'AI unavailable · Local matching' : 'Local matching · AI not configured') : response.responseSource === 'gemini' ? 'Gemini' : response.responseSource === 'openai' ? 'OpenAI' : 'Recipe matching'} · ${response.matchingSource === 'profile' ? 'Preferences' : 'Fridge'} · ${response.matchedRecipeCount ?? 0} candidates`,
           suggestedRecipes: response.suggestedRecipes ?? [],
           quickActions:     response.quickActions ?? [],
         };
 
         setMessages(prev => [...prev, aiMsg]);
       })
-      .catch(() => {
+      .catch((error) => {
         const aiMsg: Message = {
           id:   uid(),
           role: 'ai',
-          text: 'I could not reach Friyo AI right now. Please check your connection and try again.',
+          text: error?.message || 'I could not reach Friyo AI right now. Please check your connection and try again.',
         };
         setMessages(prev => [...prev, aiMsg]);
       })
@@ -300,6 +306,9 @@ export default function AITab() {
           contentContainerStyle={[s.chatContent, { paddingBottom: SCROLL_BOTTOM_PAD }]}
           keyboardDismissMode="on-drag"
         >
+          <TouchableOpacity accessibilityRole="button" onPress={checkConnection} style={{ padding: 12, marginBottom: 12, borderRadius: 12, backgroundColor: '#E8EFCF' }}>
+            <Text style={{ color: '#183C30', fontSize: 12 }}>{connectionStatus} · Tap to recheck</Text>
+          </TouchableOpacity>
           {messages.map(msg => (
             <MessageBubble
               key={msg.id}

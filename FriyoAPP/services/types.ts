@@ -125,6 +125,7 @@ export interface RecipeStep {
   tipsEn?: string | null;
   id:          string;
   stepNumber:  number;
+  parallelWithStepNumber?: number | null;
   description: string;
   durationMin: number;
   stepType:    'hands_on' | 'hands_off';
@@ -273,7 +274,7 @@ export interface AIRecipeSuggestion {
   emoji:              string;
   cookingTime:        string;
   difficulty:         string;
-  calories:           number;
+  calories:           number | null;
   reason:             string;
   usedIngredients:    string[];
   missingIngredients: string[];
@@ -283,6 +284,10 @@ export interface AIRecipeSuggestion {
 }
 
 export interface AIMessage {
+  responseSource?: 'gemini' | 'openai' | 'local';
+  fallbackReason?: 'not_configured' | 'provider_unavailable';
+  matchingSource?: 'fridge' | 'profile';
+  matchedRecipeCount?: number;
   message:          string;
   suggestedRecipes?: AIRecipeSuggestion[];
   quickActions?:    string[];
