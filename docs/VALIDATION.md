@@ -205,3 +205,28 @@ invalid step references. That staging check and actual migration execution were
 not run locally because Docker was unavailable. No usable AI provider key was
 configured locally; actual model responses and native-device behavior remain
 unverified. No live database migration or deployment was performed.
+
+
+## 2026-11-08 — GitHub Actions audit failure
+
+Commit `3cbe0c3` was pushed successfully. The red status came from the release
+workflow failing `npm audit --omit=dev --audit-level=high` in all three packages;
+the later `0c27343` run hit the same security gate.
+
+Updated compatible dependency lockfiles and raised mobile override minimums for
+URI decoding, certificate utilities, shell quoting, source maps and Undici.
+Kept Expo Router constrained to the app's existing SDK 54-compatible range.
+Updated Next.js within v15 (15.5.29), and selected patched body-parser versions
+within each existing major rather than forcing Express 5 onto body-parser 1.
+The workflow and audit threshold remain unchanged.
+
+Official-registry production audits now pass with no high/critical findings:
+mobile has 1 low/16 moderate, backend 5 moderate, and admin zero findings.
+These lower-severity reports remain open; this is not a claim of zero risk.
+The user's configured npm mirror does not implement security audit endpoints,
+so local verification explicitly used `https://registry.npmjs.org` without
+changing the user's global registry setting.
+
+Verified clean `npm ci` installs for all three packages, mobile tests (28), mobile
+typecheck, iOS JavaScript/assets export, backend production build and tests (84),
+and the admin production build after the lockfile changes.
